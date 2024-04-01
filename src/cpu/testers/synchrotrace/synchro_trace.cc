@@ -205,19 +205,19 @@ SynchroTraceReplayer::wakeupMonitor()
 void
 SynchroTraceReplayer::wakeupDebugLog()
 {
-    for (const auto& cxt : threadContexts)
-        DPRINTFN("Thread<%d>:Event<%d>:Status<%s>\n",
-                 cxt.threadId,
-                 cxt.currEventId,
-                 toString(cxt.status));
+    // for (const auto& cxt : threadContexts)
+    //     DPRINTFN("Thread<%d>:Event<%d>:Status<%s>\n",
+    //              cxt.threadId,
+    //              cxt.currEventId,
+    //              toString(cxt.status));
 
-    for (int i = 0; i < numCpus; i++)
-        if (i < numThreads)
-            DPRINTFN("Core<%d>:Thread<%d>\n",
-                     i,
-                     coreToThreadMap[i].front().get().threadId);
-        else
-            DPRINTFN("Core<%d>:EMPTY\n", i);
+    // for (int i = 0; i < numCpus; i++)
+    //     if (i < numThreads)
+    //         DPRINTFN("Core<%d>:Thread<%d>\n",
+    //                  i,
+    //                  coreToThreadMap[i].front().get().threadId);
+    //     else
+    //         DPRINTFN("Core<%d>:EMPTY\n", i);
 
     // Reschedule self
     schedule(synchroTraceDebugLogEvent,
@@ -533,10 +533,37 @@ SynchroTraceReplayer::replayThreadAPI(ThreadContext& tcxt, CoreID coreId)
     // Barriers
     case ThreadApi::EventType::BARRIER_WAIT:
     {
+
+        if (tcxt.status == ThreadStatus::BLOCKED_BARRIER && \
+                threadBarrierMap.find(pthAddr) == threadBarrierMap.end()) {
+            tcxt.status = ThreadStatus::ACTIVE;
+            tcxt.evStream.pop();
+            schedule(coreEvents[coreId],
+                     curTick() + clockPeriod() * Cycles(pthCycles));
+            DPRINTFN("Thread %s self-activated\n", tcxt.threadId);
+            break;
+        }
+
         auto p = threadBarrierMap[pthAddr].insert(tcxt.threadId);
-        fatal_if(p.second, "Thread %d already waiting in barrier <0x%X>",
-                 tcxt.threadId,
-                 pthAddr);
+        // fatal_if(!p.second, "Thread %d already waiting in barrier <0x%X>",
+                //  tcxt.threadId,
+                //  pthAddr);
+
+        // if (p.second) {
+        //     DPRINTFN("Thread %d wait for barrier <0x%X>\n",
+        //         tcxt.threadId,
+        //         pthAddr);
+        //     for (auto tid : pthMetadata.barrierMap().at(pthAddr)) {
+        //         DPRINTFN("%d\n", tid);
+        //     }
+        //     DPRINTFN("================================\n");
+        //     for (auto tid : threadBarrierMap[pthAddr]) {
+        //         DPRINTFN("%d\n", tid);
+        //     }
+        // } else {
+        //     DPRINTFN("Thread %d wait p.second=False, status:%s\n", \
+        //          tcxt.threadId, toString(tcxt.status));
+        // }
 
         // Check if this is the last thread to enter the barrier,
         // in which case, unblock all the threads.
@@ -550,7 +577,8 @@ SynchroTraceReplayer::replayThreadAPI(ThreadContext& tcxt, CoreID coreId)
                 //
                 // Expect this thread to be in the list of threads being
                 // reactivated
-                threadContexts[tid].status = ThreadStatus::ACTIVE;
+                DPRINTFN("Thread tid[%d] reactivated\n", tid);
+                // threadContexts[tid].status = ThreadStatus::ACTIVE;
             }
             // clear the barrier
             fatal_if(threadBarrierMap.erase(pthAddr) != 1,

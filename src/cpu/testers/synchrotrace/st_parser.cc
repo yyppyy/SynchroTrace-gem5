@@ -570,6 +570,9 @@ StTracePthreadMetadata::parseBarrierEvent(std::string& line)
     auto s = scn::make_stream(line);
     auto res = scn::scan(s, "**{:d},", pthAddr);
     fatal_if(!res, "error parsing barrier from file");
-    while (scn::scan(s, "{:d},", threadId))
+    while (scn::scan(s, "{:d}", threadId)) {
         m_barrierMap[pthAddr].insert(threadId - 1);
+        char tmp;
+        scn::scan(s, ",", tmp);
+    }
 }
