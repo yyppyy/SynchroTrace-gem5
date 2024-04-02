@@ -1,7 +1,8 @@
-EVENT_PATH=/home/yanpeng/GCP_gem5/prism/GCP_scripts/result/kvs_run_workloada.dat_pthread_mutex_1_8/
-OUTPUT_PATH=/home/yanpeng/GCP_gem5/prism/GCP_scripts/result/kvs_run_workloada.dat_pthread_mutex_1_8/
+EVENT_PATH=/home/yanpeng/GCP_gem5/prism/GCP_scripts/result/kvs_run_workloada.dat_pthread_rwlock_prefer_w_1_8/
+OUTPUT_PATH=/home/yanpeng/GCP_gem5/prism/GCP_scripts/result/kvs_run_workloada.dat_pthread_rwlock_prefer_w_1_8/
+ARC=ARM
 
-build/ARM/gem5.opt                                                                          \
+build/${ARC}/gem5.opt                                                                          \
   --debug-flags=STIntervalPrint                                                               \
   configs/example/synchrotrace_ruby.py                                                      \
     --ruby                                                                                    \

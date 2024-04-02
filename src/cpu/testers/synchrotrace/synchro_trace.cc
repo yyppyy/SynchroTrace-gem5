@@ -205,19 +205,19 @@ SynchroTraceReplayer::wakeupMonitor()
 void
 SynchroTraceReplayer::wakeupDebugLog()
 {
-    // for (const auto& cxt : threadContexts)
-    //     DPRINTFN("Thread<%d>:Event<%d>:Status<%s>\n",
-    //              cxt.threadId,
-    //              cxt.currEventId,
-    //              toString(cxt.status));
+    for (const auto& cxt : threadContexts)
+        DPRINTFN("Thread<%d>:Event<%d>:Status<%s>\n",
+                 cxt.threadId,
+                 cxt.currEventId,
+                 toString(cxt.status));
 
-    // for (int i = 0; i < numCpus; i++)
-    //     if (i < numThreads)
-    //         DPRINTFN("Core<%d>:Thread<%d>\n",
-    //                  i,
-    //                  coreToThreadMap[i].front().get().threadId);
-    //     else
-    //         DPRINTFN("Core<%d>:EMPTY\n", i);
+    for (int i = 0; i < numCpus; i++)
+        if (i < numThreads)
+            DPRINTFN("Core<%d>:Thread<%d>\n",
+                     i,
+                     coreToThreadMap[i].front().get().threadId);
+        else
+            DPRINTFN("Core<%d>:EMPTY\n", i);
 
     // Reschedule self
     schedule(synchroTraceDebugLogEvent,
@@ -549,21 +549,21 @@ SynchroTraceReplayer::replayThreadAPI(ThreadContext& tcxt, CoreID coreId)
                 //  tcxt.threadId,
                 //  pthAddr);
 
-        // if (p.second) {
-        //     DPRINTFN("Thread %d wait for barrier <0x%X>\n",
-        //         tcxt.threadId,
-        //         pthAddr);
-        //     for (auto tid : pthMetadata.barrierMap().at(pthAddr)) {
-        //         DPRINTFN("%d\n", tid);
-        //     }
-        //     DPRINTFN("================================\n");
-        //     for (auto tid : threadBarrierMap[pthAddr]) {
-        //         DPRINTFN("%d\n", tid);
-        //     }
-        // } else {
-        //     DPRINTFN("Thread %d wait p.second=False, status:%s\n", \
-        //          tcxt.threadId, toString(tcxt.status));
-        // }
+        if (p.second) {
+            // DPRINTFN("Thread %d wait for barrier <0x%X>\n",
+            //     tcxt.threadId,
+            //     pthAddr);
+            // for (auto tid : pthMetadata.barrierMap().at(pthAddr)) {
+            //     DPRINTFN("%d\n", tid);
+            // }
+            // DPRINTFN("================================\n");
+            // for (auto tid : threadBarrierMap[pthAddr]) {
+            //     DPRINTFN("%d\n", tid);
+            // }
+        } else {
+            // DPRINTFN("Thread %d wait p.second=False, status:%s\n",
+                //  tcxt.threadId, toString(tcxt.status));
+        }
 
         // Check if this is the last thread to enter the barrier,
         // in which case, unblock all the threads.

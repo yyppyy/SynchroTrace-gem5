@@ -1,0 +1,1 @@
+scons build/ARM/gem5.opt PROTOCOL=MOESI_CMP_directory -j100
