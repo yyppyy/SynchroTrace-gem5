@@ -1,0 +1,160 @@
+# Copyright (c) 2010 Advanced Micro Devices, Inc.
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are
+# met: redistributions of source code must retain the above copyright
+# notice, this list of conditions and the following disclaimer;
+# redistributions in binary form must reproduce the above copyright
+# notice, this list of conditions and the following disclaimer in the
+# documentation and/or other materials provided with the distribution;
+# neither the name of the copyright holders nor the names of its
+# contributors may be used to endorse or promote products derived from
+# this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#
+# Authors: Steve Reinhardt
+
+from __future__ import print_function
+from __future__ import absolute_import
+
+from m5.params import *
+from m5.objects import *
+
+from .BaseTopology import SimpleTopology
+
+class disagg(SimpleTopology):
+    description='disagg'
+
+    def makeTopology(self, options, network, IntLink, ExtLink, Router):
+
+        # default values for link latency and router latency.
+        # Can be over-ridden on a per link/router basis
+        link_latency = options.link_latency # used by simple and garnet
+        cxl_link_latency = options.cxl_link_latency
+        router_latency = options.router_latency # only used by garnet
+
+        # Create an individual router for each controller plus one more for
+        # the centralized crossbar.  The large numbers of routers are needed
+        # because external links do not model outgoing bandwidth in the
+        # simple network, but internal links do.
+        # For garnet, one router suffices, use CrossbarGarnet.py
+
+        num_dirs = options.num_dirs
+        assert(num_dirs == 1)
+        num_cpus = options.num_cpus
+        num_l2caches = options.num_l2caches
+        num_cpus_per_l2cache, rmdr = divmod(num_cpus, num_l2caches)
+        assert(rmdr == 0)
+        
+        l1_ctrls = self.noes[0:num_cpus]
+        l2_ctrls = self.nodes[num_cpus:num_cpus+num_dirs]
+        dir = self.nodes[num_cpus+num_dirs:]
+        
+        router_count = 0
+        socket_root_routers = []
+        intra_socket_routers = []
+        link_count = 0
+        ext_links = []
+        int_links = []
+        
+        # create a mesh for each socket (l2cache)
+        for i, l2_ctrl in enumerate(l2_ctrl):
+            # create socket root router
+            socket_root_router = Router(router_id=router_count,
+                                        latency=router_latency)
+            router_count += 1
+            # create a router for each l1 ctrl
+            l1_routers = [Router(router_id=router_count+j,
+                                 latency=router_latency) \
+                                    for j in range(num_cpus)]
+            router_count += num_cpus
+            # connect l2 ctrl to socket root router
+            ext_links.append(ExtLink(link_id=link_count,
+                                     ext_node=l2_ctrl,
+                                     int_node=socket_root_router,
+                                     latency=link_latency))
+            link_count += 1
+            # connect l1 ctrl to their routers
+            for l1_ctrl, l1_router in zip(l1_ctrls[i * num_cpus_per_l2cache:\
+                (i + 1) * num_cpus_per_l2cache], l1_routers):
+                ext_links.append(ExtLink(link_id=link_count,
+                                     ext_node=l1_ctrl,
+                                     int_node=l1_router,
+                                     latency=link_latency))
+                link_count += 1
+            # connect l1 routers to the socket root router
+            # todo: make it a mesh
+            for l1_router in l1_routers:
+                int_links.append(IntLink(link_id=link_count,
+                                     src_node=l1_router,
+                                     dst_node=xbar,
+                                     latency=link_latency))
+                link_count += 1
+        
+        routers = [Router(router_id=i) for i in range(num_routers+1)]
+        xbar = routers[num_routers] # the crossbar router is the last router created
+        network.routers = routers
+
+        ext_links = []
+        link_count = 0
+        
+        for i in range(num_cpus):
+            l1cache_ctrl = self.nodes[i]
+            router_id, _ = divmod(i, num_cpus_per_router)
+            ext_links.append(ExtLink(link_id=link_count,
+                                     ext_node=l1cache_ctrl,
+                                     int_node=routers[router_id],
+                                     latency=link_latency))
+            link_count += 1
+            print("Extlink node[%d] type[%s] <--> router[%d]" % (i, l1cache_ctrl.type, router_id))
+        
+        for i in range(num_cpus, num_cpus + num_routers):
+            l2cache_ctrl = self.nodes[i]
+            router_id = i - num_cpus
+            ext_links.append(ExtLink(link_id=link_count,
+                                     ext_node=l2cache_ctrl,
+                                     int_node=routers[router_id],
+                                     latency=link_latency))
+            link_count += 1
+            print("Extlink node[%d] type[%s] <--> router[%d]" % (i, l2cache_ctrl.type, router_id))
+
+        network.ext_links = ext_links
+        
+        dir = self.nodes[num_cpus + num_routers]
+        ext_links.append(ExtLink(link_id=link_count,
+                                     ext_node=dir,
+                                     int_node=xbar,
+                                     latency=link_latency))
+        link_count += 1
+        print("Extlink node[%d] type[%s] <--> router[%d]" % (num_cpus + num_routers, dir.type, num_routers))
+        
+        int_links = []
+        for i in range(num_routers):
+            int_links.append(IntLink(link_id=link_count,
+                                     src_node=routers[i],
+                                     dst_node=xbar,
+                                     latency=link_latency))
+            link_count += 1
+
+        link_count += len(self.nodes)
+
+        for i in range(num_routers):
+            int_links.append(IntLink(link_id=link_count,
+                                     src_node=xbar,
+                                     dst_node=routers[i],
+                                     latency=link_latency))
+            link_count += 1
+
+        network.int_links = int_links

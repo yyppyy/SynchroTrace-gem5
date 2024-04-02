@@ -95,6 +95,8 @@ parser.add_option("--bandwidth-factor", type="int", default=16,
                   help="Number of Virtual Channels per Network")
 parser.add_option("--l1-latency", action="store", type="int", default="3",
                   help="Latency of a L1 Hit")
+parser.add_option("--cxl-link-latency", type="int", default=300,
+                  help="Latency of CXL link")
 
 (options, args) = parser.parse_args()
 
