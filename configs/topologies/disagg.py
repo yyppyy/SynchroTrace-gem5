@@ -52,7 +52,7 @@ class disagg(SimpleTopology):
         # For garnet, one router suffices, use CrossbarGarnet.py
 
         num_dirs = options.num_dirs
-        assert(num_dirs == 1)
+        # assert(num_dirs == 1)
         num_cpus = options.num_cpus
         num_routers = options.num_l2caches
         num_cpus_per_router, remainder = divmod(num_cpus, num_routers)
@@ -87,15 +87,17 @@ class disagg(SimpleTopology):
             print("Extlink[%d] node[%d] type[%s] <--> router[%d]" \
                 % (link_count - 1, i, l2cache_ctrl.type, router_id))
 
-        dir = self.nodes[num_cpus + num_routers]
-        ext_links.append(ExtLink(link_id=link_count,
-                                     ext_node=dir,
-                                     int_node=xbar,
-                                     latency=link_latency))
-        link_count += 1
-        print("Extlink[%d] node[%d] type[%s] <--> router[%d]" \
-            % (link_count - 1, num_cpus + num_routers,
-               dir.type, num_routers))
+        for i in range(num_cpus + num_routers, \
+            num_cpus + num_routers + num_dirs):
+            dir_ctrl = self.nodes[i]
+            router_id = i - num_cpus - num_routers
+            ext_links.append(ExtLink(link_id=link_count,
+                                        ext_node=dir_ctrl,
+                                        int_node=routers[router_id],
+                                        latency=link_latency))
+            link_count += 1
+            print("Extlink[%d] node[%d] type[%s] <--> router[%d]" \
+                % (link_count - 1, i, dir_ctrl.type, router_id))
 
         network.ext_links = ext_links
 

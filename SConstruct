@@ -1024,8 +1024,8 @@ sticky_vars.AddVariables(
                   all_protocols),
     EnumVariable('BACKTRACE_IMPL', 'Post-mortem dump implementation',
                  backtrace_impls[-1], backtrace_impls),
-    ('NUMBER_BITS_PER_SET', 'Max elements in set (default 64)',
-                 64),
+    ('NUMBER_BITS_PER_SET', 'Max elements in set (default 128)',
+                 128),
     )
 
 # These variables get exported to #defines in config/*.hh (see src/SConscript).
