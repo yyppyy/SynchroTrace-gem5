@@ -154,12 +154,12 @@ class disagg(SimpleTopology):
             int_links.append(IntLink(link_id=link_count,
                                      src_node=socket_root_router,
                                      dst_node=CXL_switch,
-                                     latency=link_latency))
+                                     latency=cxl_link_latency))
             link_count += 1
             int_links.append(IntLink(link_id=link_count,
                                     src_node=CXL_switch,
                                     dst_node=socket_root_router,
-                                    latency=link_latency))
+                                    latency=cxl_link_latency))
             link_count += 1
 
         network.ext_links = ext_links

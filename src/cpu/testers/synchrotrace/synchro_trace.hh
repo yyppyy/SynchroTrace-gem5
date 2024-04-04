@@ -537,6 +537,32 @@ class SynchroTraceReplayer : public MemObject
     /** Holds which threads are waiting for a barrier */
     std::map<Addr, std::set<ThreadID>> threadBarrierMap;
 
+    /**************************************************************************
+     * GCP profiling
+     */
+
+    std::map<ThreadID, uint64_t> prof_start_ticks;
+
+    bool profile_enabled(ThreadID thread_id) {
+      return prof_start_ticks.find(thread_id) != prof_start_ticks.end();
+    }
+
+    void flip_and_dump_profile(ThreadID thread_id) {
+      if (profile_enabled(thread_id)) {
+        prof_start_ticks.erase(thread_id);
+        std::string file_path = profile_dir + std::to_string(thread_id);
+        std::ofstream file(file_path);
+        if (file.is_open()) {
+          file << (curTick() - prof_start_ticks[thread_id]);
+          file.close();
+        } else {
+          std::cerr << "Unable to open file at " << file_path << std::endl;
+        }
+      } else {
+        prof_start_ticks[thread_id] = curTick();
+      }
+    }
+
   protected:
 
     /** Wakeup frequencies */
@@ -553,5 +579,7 @@ class SynchroTraceReplayer : public MemObject
     std::vector<SynchroTraceCoreEvent> coreEvents;
 
     MasterID masterID;
+
+    std::string profile_dir;
 };
 #endif // __CPU_TESTERS_SYNCHROTRACE_SYNCHROTRACE_HH

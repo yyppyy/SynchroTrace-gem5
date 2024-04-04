@@ -99,6 +99,8 @@ parser.add_option("--cxl-link-latency", type="int", default=300,
                   help="Latency of CXL link")
 parser.add_option("--num-sockets", type="int", default=16,
                   help="Number of sockets")
+parser.add_option("--profile-dir", type="str", default='./',
+                  help="output dir for GCP profile")
 
 (options, args) = parser.parse_args()
 
@@ -120,7 +122,8 @@ tester = SynchroTraceReplayer(num_cpus=options.num_cpus,
                               pc_skip=options.pc_skip,
                               start_sync_region=options.start_sync_region,
                               inst_sync_region=options.inst_sync_region,
-                              barrier_stat_dump=options.barrier_stat_dump)
+                              barrier_stat_dump=options.barrier_stat_dump,
+                              profile_dir=options.profile_dir)
 
 # Create the system
 system = System(cache_line_size = options.cacheline_size,

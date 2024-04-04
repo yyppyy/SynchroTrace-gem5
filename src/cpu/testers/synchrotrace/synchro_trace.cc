@@ -93,7 +93,8 @@ SynchroTraceReplayer::SynchroTraceReplayer(const Params *p)
     wakeupFreqForDebugLog(50000*p->monitor_wakeup_freq),
     synchroTraceMonitorEvent(*this),
     synchroTraceDebugLogEvent(*this),
-    masterID(p->system->getMasterId(this, name()))
+    masterID(p->system->getMasterId(this, name())),
+    profile_dir(p->profile_dir)
 {
     // MDL20190622 Some members should be set in the init routine
     // because the initialization order of all SimObjects is not guaranteed.
@@ -537,6 +538,7 @@ SynchroTraceReplayer::replayThreadAPI(ThreadContext& tcxt, CoreID coreId)
         if (tcxt.status == ThreadStatus::BLOCKED_BARRIER && \
                 threadBarrierMap.find(pthAddr) == threadBarrierMap.end()) {
             tcxt.status = ThreadStatus::ACTIVE;
+            flip_and_dump_profile(tcxt.threadId);
             tcxt.evStream.pop();
             schedule(coreEvents[coreId],
                      curTick() + clockPeriod() * Cycles(pthCycles));
@@ -584,6 +586,7 @@ SynchroTraceReplayer::replayThreadAPI(ThreadContext& tcxt, CoreID coreId)
             fatal_if(threadBarrierMap.erase(pthAddr) != 1,
                      "Tried to clear barrier that doesn't exist! <0x%X>",
                      pthAddr);
+            flip_and_dump_profile(tcxt.threadId);
             tcxt.evStream.pop();
             schedule(coreEvents[coreId],
                      curTick() + clockPeriod() * Cycles(pthCycles));
