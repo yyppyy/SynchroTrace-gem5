@@ -52,64 +52,19 @@ class disagg(SimpleTopology):
         # For garnet, one router suffices, use CrossbarGarnet.py
 
         num_dirs = options.num_dirs
-        assert(num_dirs == 1)
+        # assert(num_dirs == 1)
         num_cpus = options.num_cpus
-        num_l2caches = options.num_l2caches
-        num_cpus_per_l2cache, rmdr = divmod(num_cpus, num_l2caches)
-        assert(rmdr == 0)
-        
-        l1_ctrls = self.noes[0:num_cpus]
-        l2_ctrls = self.nodes[num_cpus:num_cpus+num_dirs]
-        dir = self.nodes[num_cpus+num_dirs:]
-        
-        router_count = 0
-        socket_root_routers = []
-        intra_socket_routers = []
-        link_count = 0
-        ext_links = []
-        int_links = []
-        
-        # create a mesh for each socket (l2cache)
-        for i, l2_ctrl in enumerate(l2_ctrl):
-            # create socket root router
-            socket_root_router = Router(router_id=router_count,
-                                        latency=router_latency)
-            router_count += 1
-            # create a router for each l1 ctrl
-            l1_routers = [Router(router_id=router_count+j,
-                                 latency=router_latency) \
-                                    for j in range(num_cpus)]
-            router_count += num_cpus
-            # connect l2 ctrl to socket root router
-            ext_links.append(ExtLink(link_id=link_count,
-                                     ext_node=l2_ctrl,
-                                     int_node=socket_root_router,
-                                     latency=link_latency))
-            link_count += 1
-            # connect l1 ctrl to their routers
-            for l1_ctrl, l1_router in zip(l1_ctrls[i * num_cpus_per_l2cache:\
-                (i + 1) * num_cpus_per_l2cache], l1_routers):
-                ext_links.append(ExtLink(link_id=link_count,
-                                     ext_node=l1_ctrl,
-                                     int_node=l1_router,
-                                     latency=link_latency))
-                link_count += 1
-            # connect l1 routers to the socket root router
-            # todo: make it a mesh
-            for l1_router in l1_routers:
-                int_links.append(IntLink(link_id=link_count,
-                                     src_node=l1_router,
-                                     dst_node=xbar,
-                                     latency=link_latency))
-                link_count += 1
-        
+        num_routers = options.num_l2caches
+        num_cpus_per_router, remainder = divmod(num_cpus, num_routers)
+        assert(remainder == 0)
+
         routers = [Router(router_id=i) for i in range(num_routers+1)]
-        xbar = routers[num_routers] # the crossbar router is the last router created
+        xbar = routers[num_routers]
         network.routers = routers
 
         ext_links = []
         link_count = 0
-        
+
         for i in range(num_cpus):
             l1cache_ctrl = self.nodes[i]
             router_id, _ = divmod(i, num_cpus_per_router)
@@ -118,8 +73,9 @@ class disagg(SimpleTopology):
                                      int_node=routers[router_id],
                                      latency=link_latency))
             link_count += 1
-            print("Extlink node[%d] type[%s] <--> router[%d]" % (i, l1cache_ctrl.type, router_id))
-        
+            print("Extlink[%d] node[%d] type[%s] <--> router[%d]" \
+                % (link_count - 1, i, l1cache_ctrl.type, router_id))
+
         for i in range(num_cpus, num_cpus + num_routers):
             l2cache_ctrl = self.nodes[i]
             router_id = i - num_cpus
@@ -128,33 +84,40 @@ class disagg(SimpleTopology):
                                      int_node=routers[router_id],
                                      latency=link_latency))
             link_count += 1
-            print("Extlink node[%d] type[%s] <--> router[%d]" % (i, l2cache_ctrl.type, router_id))
+            print("Extlink[%d] node[%d] type[%s] <--> router[%d]" \
+                % (link_count - 1, i, l2cache_ctrl.type, router_id))
+
+        for i in range(num_cpus + num_routers, \
+            num_cpus + num_routers + num_dirs):
+            dir_ctrl = self.nodes[i]
+            router_id = i - num_cpus - num_routers
+            ext_links.append(ExtLink(link_id=link_count,
+                                        ext_node=dir_ctrl,
+                                        int_node=routers[router_id],
+                                        latency=link_latency))
+            link_count += 1
+            print("Extlink[%d] node[%d] type[%s] <--> router[%d]" \
+                % (link_count - 1, i, dir_ctrl.type, router_id))
 
         network.ext_links = ext_links
-        
-        dir = self.nodes[num_cpus + num_routers]
-        ext_links.append(ExtLink(link_id=link_count,
-                                     ext_node=dir,
-                                     int_node=xbar,
-                                     latency=link_latency))
-        link_count += 1
-        print("Extlink node[%d] type[%s] <--> router[%d]" % (num_cpus + num_routers, dir.type, num_routers))
-        
+
         int_links = []
         for i in range(num_routers):
             int_links.append(IntLink(link_id=link_count,
                                      src_node=routers[i],
                                      dst_node=xbar,
-                                     latency=link_latency))
+                                     latency=cxl_link_latency))
             link_count += 1
-
-        link_count += len(self.nodes)
+            print("Intlink[%d] router[%s] --> router[%d]" \
+                % (link_count - 1, i, num_routers))
 
         for i in range(num_routers):
             int_links.append(IntLink(link_id=link_count,
                                      src_node=xbar,
                                      dst_node=routers[i],
-                                     latency=link_latency))
+                                     latency=cxl_link_latency))
             link_count += 1
+            print("Intlink[%d] router[%s] --> router[%d]" \
+                % (link_count - 1, num_routers, i))
 
         network.int_links = int_links

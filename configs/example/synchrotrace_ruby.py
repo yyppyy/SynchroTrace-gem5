@@ -97,6 +97,8 @@ parser.add_option("--l1-latency", action="store", type="int", default="3",
                   help="Latency of a L1 Hit")
 parser.add_option("--cxl-link-latency", type="int", default=300,
                   help="Latency of CXL link")
+parser.add_option("--num-sockets", type="int", default=16,
+                  help="Number of sockets")
 
 (options, args) = parser.parse_args()
 
