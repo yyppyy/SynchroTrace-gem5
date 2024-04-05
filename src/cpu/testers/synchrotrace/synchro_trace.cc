@@ -94,7 +94,8 @@ SynchroTraceReplayer::SynchroTraceReplayer(const Params *p)
     synchroTraceMonitorEvent(*this),
     synchroTraceDebugLogEvent(*this),
     masterID(p->system->getMasterId(this, name())),
-    profile_dir(p->profile_dir)
+    profile_dir(p->profile_dir),
+    num_sockets(p->num_sockets)
 {
     // MDL20190622 Some members should be set in the init routine
     // because the initialization order of all SimObjects is not guaranteed.

@@ -408,7 +408,13 @@ class SynchroTraceReplayer : public MemObject
     /** Simple helper. Threads are statically mapped to cores round-robin */
     CoreID threadIdToCoreId(ThreadID threadId) const
     {
-        return threadId % numCpus;
+        // return threadId % numCpus;
+        assert(numCpus % num_sockets == 0);
+        int num_cpus_per_socket = numCpus / num_sockets;
+        CoreID ret = (threadId % num_sockets) * num_cpus_per_socket + \
+            (threadId / num_sockets);
+        DPRINTFN("Thread[%d] --> core[%d]\n", threadId, ret);
+        return ret;
     }
 
     /**************************************************************************
@@ -581,5 +587,7 @@ class SynchroTraceReplayer : public MemObject
     MasterID masterID;
 
     std::string profile_dir;
+
+    int num_sockets;
 };
 #endif // __CPU_TESTERS_SYNCHROTRACE_SYNCHROTRACE_HH

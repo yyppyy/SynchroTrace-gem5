@@ -141,3 +141,4 @@ class SynchroTraceReplayer(MemObject):
     barrier_stat_dump = Param.Bool("Option to dump stats after barriers")
     system = Param.System(Parent.any, "System we belong to")
     profile_dir = Param.String("Location of GCP profile")
+    num_sockets = Param.Int("Number of sockets")

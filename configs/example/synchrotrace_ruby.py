@@ -123,7 +123,8 @@ tester = SynchroTraceReplayer(num_cpus=options.num_cpus,
                               start_sync_region=options.start_sync_region,
                               inst_sync_region=options.inst_sync_region,
                               barrier_stat_dump=options.barrier_stat_dump,
-                              profile_dir=options.profile_dir)
+                              profile_dir=options.profile_dir,
+                              num_sockets=options.num_sockets)
 
 # Create the system
 system = System(cache_line_size = options.cacheline_size,
