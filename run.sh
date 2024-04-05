@@ -20,5 +20,12 @@ build/${ARC}/gem5.opt                                                           
     --l1d_size=64kB --l1d_assoc=2 --l1i_size=64kB --l1i_assoc=2 --l2_size=4096kB --l2_assoc=8 \
     --cpi-iops=1 --cpi-flops=1                                                                \
     --bandwidth-factor=4 --monitor-freq=100 --cacheline_size=64                               \
-    --cxl-link-latency=200                                                                      \
+    --link-latency=20                                                                            \
+    --cxl-link-latency=60                                                                      \
+    --cxl-switch-latency=60                                                                     \
     --profile-dir=${PROFILE_DIR}
+
+    # --link_bandwidth= \
+    # --cxl-link-bandwidth= \
+    # --cxl-switch-bandwidth= \
+    # --cxl-mem-ctrl-latency=120, roundtrip latency, directly compiled in src/mem/protocol/MOESI_CMP_directory.dir.sm

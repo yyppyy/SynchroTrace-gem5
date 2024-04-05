@@ -44,6 +44,8 @@ class disagg(SimpleTopology):
         link_latency = options.link_latency # used by simple and garnet
         cxl_link_latency = options.cxl_link_latency
         router_latency = options.router_latency # only used by garnet
+        cxl_switch_latency = options.cxl_switch_latency
+        core_local_link_latency = 6
 
         # Create an individual router for each controller plus one more for
         # the centralized crossbar.  The large numbers of routers are needed
@@ -101,7 +103,7 @@ class disagg(SimpleTopology):
                 ext_links.append(ExtLink(link_id=link_count,
                                         ext_node=l1_ctrl,
                                         int_node=dir_router,
-                                        latency=link_latency))
+                                        latency=core_local_link_latency))
                 link_count += 1
                 print("Extlink[%d] node[%d] type[%s] <--> router[%d]" \
                 % (link_count - 1, j, l1_ctrl.type, j // num_cpus_per_dir))
@@ -113,7 +115,7 @@ class disagg(SimpleTopology):
                 ext_links.append(ExtLink(link_id=link_count,
                                         ext_node=l2_ctrl,
                                         int_node=dir_router,
-                                        latency=link_latency))
+                                        latency=core_local_link_latency))
                 link_count += 1
                 print("Extlink[%d] node[%d] type[%s] <--> router[%d]" \
                 % (link_count - 1, j, l2_ctrl.type, j // num_l2s_per_dir))
@@ -125,7 +127,7 @@ class disagg(SimpleTopology):
                 ext_links.append(ExtLink(link_id=link_count,
                                         ext_node=dir_ctrl,
                                         int_node=dir_router,
-                                        latency=link_latency))
+                                        latency=core_local_link_latency))
                 link_count += 1
                 print("Extlink[%d] node[%d] type[%s] <--> router[%d]" \
                 % (link_count - 1, j, dir_ctrl.type, j))
@@ -146,7 +148,7 @@ class disagg(SimpleTopology):
 
         # add CXL switch
         CXL_switch = Router(router_id=router_count,
-                            latency=router_latency)
+                            latency=cxl_switch_latency)
         router_count += 1
 
         # connect socket root routers to CXL switch

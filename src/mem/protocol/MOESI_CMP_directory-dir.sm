@@ -41,7 +41,7 @@
 machine(MachineType:Directory, "Directory protocol")
 :  DirectoryMemory * directory;
    Cycles directory_latency := 6;
-   Cycles to_memory_controller_latency := 1;
+   Cycles to_memory_controller_latency := 180;
    // TODO: change this to reflect CXL mem
 
    // Message Queues
