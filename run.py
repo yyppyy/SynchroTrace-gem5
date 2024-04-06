@@ -23,9 +23,9 @@ workloads = {
 num_threads_per_nodess = [8, ]
 # num_threads_per_nodess = [8, ]
 
-# num_nodess = [12, ]
-# num_nodess = [16, 12, 8, 4, 1]
-num_nodess = [1, ]
+num_nodess = [16, ]
+# num_nodess = [16, 8, 4, 2, 1]
+# num_nodess = [1, ]
 
 # lock_types = ['pthread_rwlock_prefer_w',
 #               'percpu',
@@ -33,7 +33,10 @@ num_nodess = [1, ]
 #               'mcs',
 #               'pthread_mutex']
 # lock_types = ['pthread_mutex', ]
-lock_types = ['pthread_rwlock_prefer_w', ]
+# lock_types = ['pthread_rwlock_prefer_w', ]
+# lock_types = ['mcs', ]
+lock_types = ['percpu', ]
+# lock_types = ['cohort_rw_spin_mutex', ]
 
 if __name__ == "__main__":
     for app in workloads:
@@ -97,10 +100,15 @@ if __name__ == "__main__":
 
                         print(cmd)
                         cmds = shlex.split(cmd)
-                        total_procs += 1
+
                         running_procs.append(subprocess.Popen(cmds))
-                        if len(running_procs) == MAX_PROCS:
-                            for p in running_procs:
-                                p.wait()
-                        print("total procs finished: %d" % total_procs)
-                        running_procs = []
+                        while (len(running_procs) == MAX_PROCS):
+                            for i,p in enumerate(running_procs):
+                                try:
+                                    p.wait(timeout=1)
+                                    running_procs.pop(i)
+                                    total_procs += 1
+                                    print("finished: %d" % (total_procs))
+                                    break
+                                except subprocess.TimeoutExpired:
+                                    pass
