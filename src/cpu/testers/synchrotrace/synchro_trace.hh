@@ -555,6 +555,8 @@ class SynchroTraceReplayer : public MemObject
 
     void flip_and_dump_profile(ThreadID thread_id) {
       if (profile_enabled(thread_id)) {
+        // if (thread_id == 0)
+          // DPRINTFN("profile end\n");
         prof_start_ticks.erase(thread_id);
         std::string file_path = profile_dir + std::to_string(thread_id);
         std::ofstream file(file_path);
@@ -565,6 +567,8 @@ class SynchroTraceReplayer : public MemObject
           std::cerr << "Unable to open file at " << file_path << std::endl;
         }
       } else {
+        // if (thread_id == 0)
+          // DPRINTFN("profile begin\n");
         prof_start_ticks[thread_id] = curTick();
       }
     }

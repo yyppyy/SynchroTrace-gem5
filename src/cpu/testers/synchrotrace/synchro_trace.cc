@@ -207,23 +207,23 @@ SynchroTraceReplayer::wakeupMonitor()
 void
 SynchroTraceReplayer::wakeupDebugLog()
 {
-    for (const auto& cxt : threadContexts)
-        DPRINTFN("Thread<%d>:Event<%d>:Status<%s>\n",
-                 cxt.threadId,
-                 cxt.currEventId,
-                 toString(cxt.status));
+    // for (const auto& cxt : threadContexts)
+    //     DPRINTFN("Thread<%d>:Event<%d>:Status<%s>\n",
+    //              cxt.threadId,
+    //              cxt.currEventId,
+    //              toString(cxt.status));
 
-    for (int i = 0; i < numCpus; i++)
-        if (i < numThreads)
-            DPRINTFN("Core<%d>:Thread<%d>\n",
-                     i,
-                     coreToThreadMap[i].front().get().threadId);
-        else
-            DPRINTFN("Core<%d>:EMPTY\n", i);
+    // for (int i = 0; i < numCpus; i++)
+    //     if (i < numThreads)
+    //         DPRINTFN("Core<%d>:Thread<%d>\n",
+    //                  i,
+    //                  coreToThreadMap[i].front().get().threadId);
+    //     else
+    //         DPRINTFN("Core<%d>:EMPTY\n", i);
 
-    // Reschedule self
-    schedule(synchroTraceDebugLogEvent,
-             curTick() + clockPeriod() * wakeupFreqForDebugLog);
+    // // Reschedule self
+    // schedule(synchroTraceDebugLogEvent,
+    //          curTick() + clockPeriod() * wakeupFreqForDebugLog);
 }
 
 
@@ -300,9 +300,13 @@ void
 SynchroTraceReplayer::replayCompute(ThreadContext& tcxt, CoreID coreId)
 {
     assert(tcxt.evStream.peek().tag == StEvent::Tag::COMPUTE);
-
     // simulate time for the iops/flops
     const ComputeOps& ops = tcxt.evStream.peek().computeOps;
+    // if (coreId == 0)
+        // DPRINTFN("Thread[%d] replay compute at [%lu], nxt time[%lu]\n",
+        // tcxt.threadId, curTick(), curTick() + clockPeriod() +
+            //  (clockPeriod() * (Cycles(CPI_IOPS * ops.iops) +
+                            //    Cycles(CPI_FLOPS * ops.flops))));
     schedule(coreEvents[coreId],
              curTick() + clockPeriod() +
              (clockPeriod() * (Cycles(CPI_IOPS * ops.iops) +
@@ -314,9 +318,14 @@ void
 SynchroTraceReplayer::replayMemory(ThreadContext& tcxt, CoreID coreId)
 {
     assert(tcxt.evStream.peek().tag == StEvent::Tag::MEMORY);
-
     // Send the load/store
     const StEvent& ev = tcxt.evStream.peek();
+    // if (coreId == 0)
+        // DPRINTFN("Thread[%d] replay memory at [%lu], addr[0x%lx] bytes[%lu]
+        // type[%d]\n",
+        // tcxt.threadId, curTick(), ev.memoryReq.addr,
+            //    ev.memoryReq.bytesRequested,
+            //    (int)ev.memoryReq.type);
     msgReqSend(coreId,
                ev.memoryReq.addr,
                ev.memoryReq.bytesRequested,
@@ -379,6 +388,10 @@ SynchroTraceReplayer::replayThreadAPI(ThreadContext& tcxt, CoreID coreId)
     assert(tcxt.evStream.peek().tag == StEvent::Tag::THREAD_API);
     const StEvent& ev = tcxt.evStream.peek();
     const Addr pthAddr = ev.threadApi.pthAddr;
+
+    // if (coreId == 0)
+        // DPRINTFN("Thread[%d] replay thread API[%d]\n",
+        // tcxt.threadId, (int)ev.threadApi.eventType);
 
     switch (ev.threadApi.eventType)
     {
@@ -835,6 +848,8 @@ SynchroTraceReplayer::msgRespRecv(CoreID coreId, PacketPtr pkt)
     // Called upon timing response for this core from a memory request.
 
     assert(coreId < numContexts);
+    // if (coreId == 0)
+        // DPRINTFN("Thread[%d] recv memory at [%lu]\n", curTick());
 
     // TODO(someday)
     // assert this is the expected timing response for the last request

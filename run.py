@@ -7,35 +7,36 @@ import shlex
 import os
 
 running_procs = []
-MAX_PROCS = 1
+MAX_PROCS = 75
 total_procs = 0
 
 root_path = '/home/yanpeng/GCP_gem5/prism/GCP_scripts/result/'
 
-# workloads = {
-#     'kvs' : ['run_workloada.dat', 'run_workloadb.dat', 'run_workloadc.dat'],
-#     # 'kc': ['run_workloadl.dat', 'run_workloadh.dat'],
-# }
 workloads = {
-    'kvs' : ['run_workloada.dat', ],
+    'kvs' : ['run_workloada.dat', 'run_workloadb.dat', 'run_workloadc.dat'],
+    # 'kc': ['run_workloadl.dat', 'run_workloadh.dat'],
 }
+# workloads = {
+#     'kvs' : ['run_workloada.dat', ],
+# }
 
 num_threads_per_nodess = [8, ]
 # num_threads_per_nodess = [8, ]
 
-num_nodess = [16, ]
-# num_nodess = [16, 8, 4, 2, 1]
+# num_nodess = [16, ]
+num_nodess = [16, 8, 4, 2, 1]
 # num_nodess = [1, ]
+# num_nodess = [16, 8]
 
-# lock_types = ['pthread_rwlock_prefer_w',
-#               'percpu',
-#               'cohort_rw_spin_mutex',
-#               'mcs',
-#               'pthread_mutex']
+lock_types = ['pthread_rwlock_prefer_w',
+              'percpu',
+              'cohort_rw_spin_mutex',
+              'mcs',
+              'pthread_mutex']
 # lock_types = ['pthread_mutex', ]
 # lock_types = ['pthread_rwlock_prefer_w', ]
 # lock_types = ['mcs', ]
-lock_types = ['percpu', ]
+# lock_types = ['percpu', ]
 # lock_types = ['cohort_rw_spin_mutex', ]
 
 if __name__ == "__main__":
@@ -86,13 +87,17 @@ if __name__ == "__main__":
                         option_list.append('--l2_assoc=8')
                         option_list.append('--cpi-iops=1')
                         option_list.append('--cpi-flops=1')
-                        option_list.append('--bandwidth-factor=4')
+                        option_list.append('--bandwidth-factor=8')
+                        option_list.append('--vcs-per-vnet=8')
                         option_list.append('--monitor-freq=100')
                         option_list.append('--cacheline_size=64')
                         option_list.append('--link-latency=20')
                         option_list.append('--cxl-link-latency=60')
                         option_list.append('--cxl-switch-latency=60')
-                        option_list.append('--profile-dir=' + str(output_path))
+                        option_list.append('--profile-dir=' \
+                            + str(output_path))
+                        # option_list.append('--garnet-network=flexible')
+
                         options = ' '.join(option_list)
 
                         cmd += ' '
