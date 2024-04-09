@@ -29,7 +29,7 @@ num_threads_per_nodess = [8, ]
 
 # num_nodess = [16, ]
 num_nodess = [16, 8, 4, 2, 1]
-# num_nodess = [1, ]
+# num_nodess = [2, ]
 # num_nodess = [16, 8]
 
 lock_types = ['pthread_rwlock_prefer_w',

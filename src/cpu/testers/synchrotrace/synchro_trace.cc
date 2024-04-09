@@ -143,8 +143,10 @@ SynchroTraceReplayer::init()
     for (ThreadID i = 0; i < numThreads; i++)
         threadContexts.emplace_back(
             i, eventDir, blockSizeBytes, memorySizeBytes);
-    for (auto& tcxt : threadContexts)
+    for (auto& tcxt : threadContexts) {
         coreToThreadMap.at(threadIdToCoreId(tcxt.threadId)).emplace_back(tcxt);
+        pending_mem_instrs[tcxt.threadId] = 0;
+    }
 
     // Initialize statistics
     workerThreadCount = 0;
@@ -320,18 +322,59 @@ SynchroTraceReplayer::replayMemory(ThreadContext& tcxt, CoreID coreId)
     assert(tcxt.evStream.peek().tag == StEvent::Tag::MEMORY);
     // Send the load/store
     const StEvent& ev = tcxt.evStream.peek();
-    // if (coreId == 0)
-        // DPRINTFN("Thread[%d] replay memory at [%lu], addr[0x%lx] bytes[%lu]
-        // type[%d]\n",
-        // tcxt.threadId, curTick(), ev.memoryReq.addr,
-            //    ev.memoryReq.bytesRequested,
-            //    (int)ev.memoryReq.type);
-    msgReqSend(coreId,
-               ev.memoryReq.addr,
-               ev.memoryReq.bytesRequested,
-               ev.memoryReq.type);
-    tcxt.evStream.pop();
+
+    if (mem_pollings.find(tcxt.threadId) == mem_pollings.end()) {
+        // send only when not polling
+        // if (coreId == 0)
+            // DPRINTFN("Thread[%d] replay memory at [%lu],
+            // addr[0x%lx] bytes[%lu]
+            // type[%d]\n",
+            // tcxt.threadId, curTick(), ev.memoryReq.addr,
+                //    ev.memoryReq.bytesRequested,
+                //    (int)ev.memoryReq.type);
+        if (pending_mem_instrs[tcxt.threadId] >= max_async_mem_instr) {
+            schedule(coreEvents[coreId],
+                curTick() + clockPeriod() * Cycles(20));
+            // DPRINTFN("Thread[%d] retry at 1 pending_mem_instrs[%d]\n",
+                // tcxt.threadId, pending_mem_instrs[tcxt.threadId]);
+            return;
+        } else if (msgReqSendRetSucc(coreId,
+                ev.memoryReq.addr,
+                ev.memoryReq.bytesRequested,
+                ev.memoryReq.type)) {
+            pending_mem_instrs[tcxt.threadId] += 1;
+        } else {
+            // msg can not be send now, retry later
+            schedule(coreEvents[coreId],
+                curTick() + clockPeriod() * Cycles(20));
+            // DPRINTFN("Thread[%d] retry at 2 pending_mem_instrs[%d]\n",
+                // tcxt.threadId, pending_mem_instrs[tcxt.threadId]);
+            return;
+        }
+    }
+
     // Do not reschedule wakeup; will wakeup again on the timing response.
+
+    if (in_crtc_secs.find(tcxt.threadId) != in_crtc_secs.end()) {
+        // in critical section, prefetch shared data
+        // Schedule wakeup for async mem instr
+        tcxt.evStream.pop();
+        schedule(coreEvents[coreId],
+             curTick() + clockPeriod());
+    } else {
+        // wait until pending mem instr finishes
+        if (pending_mem_instrs[tcxt.threadId] > 0) {
+            mem_pollings.insert(tcxt.threadId);
+            schedule(coreEvents[coreId],
+                curTick() + clockPeriod() * Cycles(20));
+            // DPRINTFN("Thread[%d] retry at 3 pending_mem_instrs[%d]\n",
+                // tcxt.threadId, pending_mem_instrs[tcxt.threadId]);
+        } else {
+            tcxt.evStream.pop();
+            schedule(coreEvents[coreId],
+                curTick() + clockPeriod());
+        }
+    }
 }
 
 void
@@ -847,12 +890,14 @@ SynchroTraceReplayer::processInsnMarker(ThreadContext& tcxt, CoreID coreId)
             // reader unlock begin
             DPRINTFN("Thread[%d] reader unlock[%d] begin\n",
                 tcxt.threadId, rwlock_addr);
-            ;
+            assert(in_crtc_secs.find(tcxt.threadId) != in_crtc_secs.end());
+            in_crtc_secs.erase(tcxt.threadId);
         } else if (rwlock_indicator == 03) {
             // writer unlock begin
             DPRINTFN("Thread[%d] writer unlock[%d] begin\n",
                 tcxt.threadId, rwlock_addr);
-            ;
+            assert(in_crtc_secs.find(tcxt.threadId) != in_crtc_secs.end());
+            in_crtc_secs.erase(tcxt.threadId);
         } else if (rwlock_indicator == 10) {
             // reader lock end
             DPRINTFN("Thread[%d] reader lock[%d] end\n",
@@ -860,6 +905,9 @@ SynchroTraceReplayer::processInsnMarker(ThreadContext& tcxt, CoreID coreId)
             if (!rwlock_is_turn(rwlock_queue, tcxt.threadId, 'r')) {
                 recheck_cycles = 20;
                 pop_event = false;
+            } else {
+                assert(in_crtc_secs.find(tcxt.threadId) == in_crtc_secs.end());
+                in_crtc_secs.insert(tcxt.threadId);
             }
         } else if (rwlock_indicator == 11) {
             // writer lock end
@@ -868,6 +916,9 @@ SynchroTraceReplayer::processInsnMarker(ThreadContext& tcxt, CoreID coreId)
             if (!rwlock_is_turn(rwlock_queue, tcxt.threadId, 'w')) {
                 recheck_cycles = 20;
                 pop_event = false;
+            } else {
+                assert(in_crtc_secs.find(tcxt.threadId) == in_crtc_secs.end());
+                in_crtc_secs.insert(tcxt.threadId);
             }
         } else if (rwlock_indicator == 12) {
             // reader unlock end
@@ -911,6 +962,69 @@ SynchroTraceReplayer::processEndMarker(ThreadContext& tcxt, CoreID coreId)
 /******************************************************************************
  * Helper functions
  */
+
+bool SynchroTraceReplayer::msgReqSendRetSucc(CoreID coreId,
+                                      Addr addr,
+                                      uint32_t bytes,
+                                      ReqType type)
+{
+    // Packetize a simple memory request.
+
+    // No special flags are required for the request because
+    // - we only care about the timing of the underlying Packet within the
+    //   memory system,
+    // - and because we only thinly model a simple 1-CPI CPU.
+    //
+    // N.B. the address is most likely a (modified-to-be-valid) virtual memory
+    // address. SynchroTrace doesn't model a TLB, for simulation speed-up, at
+    // the cost of some accuracy.
+    RequestPtr req = std::make_shared<Request>(
+        addr, bytes, Request::Flags{}, masterID);
+    req->setContext(coreId);
+
+    // Create the request packet that will be sent through the memory system.
+    PacketPtr pkt = new Packet(req, type == ReqType::REQ_READ ?
+                               MemCmd::ReadReq : MemCmd::WriteReq);
+
+    // We don't care about the actual data since we're only interested in the
+    // timing.
+    pkt->allocate();
+
+    DPRINTF(STDebug, "Requesting access to Addr 0x%x\n", pkt->getAddr());
+
+    // Send memory request
+    if (ports[coreId].sendTimingReq(pkt)) {
+        DPRINTF(STDebug,
+                "Tick<%d>: Message Triggered:"
+                " Core<%d>:Thread<%d>:Event<%d>:Addr<0x%x>\n",
+                curTick(),
+                coreId,
+                coreToThreadMap[coreId].front().get().threadId,
+                coreToThreadMap[coreId].front().get().currEventId,
+                addr);
+        return true;
+    } else {
+        // The packet may not have been issued because another component
+        // along the way became overwhelmed and had to drop the packet.
+        warn("%d: Packet did not issue from CoreID: %d, ThreadID: %d",
+             curTick(),
+             coreId,
+             coreToThreadMap[coreId].front().get().threadId);
+
+        // If the packet did not issue, delete it and create a new one upon
+        // reissue. Cannot reuse it because it's created with the current
+        // system state.
+        // Note: No need to delete the data, the packet destructor
+        // will delete it
+        delete pkt;
+
+        // Because there will be no response packet to wakeup the core,
+        // reschedule the core to try again next cycle.
+        // schedule(coreEvents[coreId], curTick() + clockPeriod());
+        return false;
+    }
+}
+
 
 void SynchroTraceReplayer::msgReqSend(CoreID coreId,
                                       Addr addr,
@@ -981,12 +1095,23 @@ SynchroTraceReplayer::msgRespRecv(CoreID coreId, PacketPtr pkt)
     // if (coreId == 0)
         // DPRINTFN("Thread[%d] recv memory at [%lu]\n", curTick());
 
+    // if (in_crtc_secs.find(threadIdToCoreId(coreId)) != in_crtc_secs.end()) {
+        // in critcal section
+        // async mem instr
+        // the core already proceed, don't schedule
+    // } else {
+        // not in critical section
+        // schedule wake up
+        // schedule(coreEvents[coreId], curTick());
+    dec_pending_msg(coreId);
+    // }
+
     // TODO(someday)
     // assert this is the expected timing response for the last request
     // this core/thread sent
 
     // Schedule core to handle next event, now
-    schedule(coreEvents[coreId], curTick());
+    // schedule(coreEvents[coreId], curTick());
 }
 
 bool

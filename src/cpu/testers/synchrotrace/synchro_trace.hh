@@ -195,7 +195,8 @@ class SynchroTraceReplayer : public MemObject
 
         virtual void recvReqRetry() override
         {
-            panic("%s does not expect a retry\n", name());
+            // panic("%s does not expect a retry\n", name());
+            m_tester.dec_pending_msg(id);
         }
     };
 
@@ -371,9 +372,15 @@ class SynchroTraceReplayer : public MemObject
 
     /** Send a blocking message request to memory system. */
     void msgReqSend(CoreID coreId, Addr addr, uint32_t bytes, ReqType type);
+    bool msgReqSendRetSucc(CoreID coreId, Addr addr,
+        uint32_t bytes, ReqType type);
 
     /** Memory request returned. Schedule to wake up and process next event. */
     void msgRespRecv(PortID coreId, PacketPtr pkt);
+    void dec_pending_msg(PortID coreId) {
+      ThreadContext& tcxt = coreToThreadMap[coreId].front();
+      pending_mem_instrs[tcxt.threadId] -= 1;
+    }
 
     /**
      * For a communication event, check to see if the producer has reached
@@ -414,7 +421,7 @@ class SynchroTraceReplayer : public MemObject
         int num_cpus_per_socket = numCpus / num_sockets;
         CoreID ret = (threadId % num_sockets) * num_cpus_per_socket + \
             (threadId / num_sockets);
-        DPRINTFN("Thread[%d] --> core[%d]\n", threadId, ret);
+        // DPRINTFN("Thread[%d] --> core[%d]\n", threadId, ret);
         return ret;
     }
 
@@ -578,6 +585,12 @@ class SynchroTraceReplayer : public MemObject
     std::map<uint64_t, std::list<std::pair<ThreadID, char>>> rwlock_queues;
     std::map<ThreadID, uint64_t> op_counts;
     const uint64_t warmup_ops = 0;
+
+    // *async mem instr to model prefetching
+    std::set<ThreadID> in_crtc_secs;
+    std::map<ThreadID, uint64_t> pending_mem_instrs;
+    std::set<ThreadID> mem_pollings;
+    uint64_t max_async_mem_instr = 4;
 
   protected:
 
