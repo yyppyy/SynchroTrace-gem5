@@ -67,6 +67,7 @@
 #include <ctime>
 #include <fstream>
 #include <iostream>
+#include <list>
 #include <queue>
 #include <string>
 #include <vector>
@@ -550,7 +551,7 @@ class SynchroTraceReplayer : public MemObject
     std::map<ThreadID, uint64_t> prof_start_ticks;
 
     bool profile_enabled(ThreadID thread_id) {
-      return prof_start_ticks.find(thread_id) != prof_start_ticks.end();
+      return op_counts[thread_id] >= warmup_ops;
     }
 
     void flip_and_dump_profile(ThreadID thread_id) {
@@ -569,9 +570,14 @@ class SynchroTraceReplayer : public MemObject
       } else {
         // if (thread_id == 0)
           // DPRINTFN("profile begin\n");
-        prof_start_ticks[thread_id] = curTick();
+        // prof_start_ticks[thread_id] = curTick();
       }
     }
+
+    // *rwlock simualtion
+    std::map<uint64_t, std::list<std::pair<ThreadID, char>>> rwlock_queues;
+    std::map<ThreadID, uint64_t> op_counts;
+    const uint64_t warmup_ops = 0;
 
   protected:
 

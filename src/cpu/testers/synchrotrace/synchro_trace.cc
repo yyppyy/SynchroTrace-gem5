@@ -758,13 +758,143 @@ SynchroTraceReplayer::processEventMarker(ThreadContext& tcxt, CoreID coreId)
     tcxt.evStream.pop();
 }
 
+// Function to check if it's the correct turn
+static bool rwlock_is_turn(std::list<std::pair<ThreadID, char>>& rwlock_queue,
+            ThreadID thread_id, char type) {
+    auto it = std::find_if(rwlock_queue.begin(), rwlock_queue.end(),
+                [thread_id, type](const std::pair<ThreadID, char>& element) {
+                return element.first == thread_id && element.second == type;
+            });
+    assert(it != rwlock_queue.end()); // Fail if no such element exists
+
+    if (type == 'w') {
+        // For writers: check if the writer is at the head
+        if (!rwlock_queue.empty() && rwlock_queue.front().first == thread_id
+                && rwlock_queue.front().second == 'w') {
+            return true;
+        }
+    } else if (type == 'r') {
+        // For readers: check if the reader is at the head among readers
+        for (auto it = rwlock_queue.begin(); it != rwlock_queue.end(); ++it) {
+            if (it->second == 'w') return false;
+            // Stop if we encounter a writer
+            if (it->second == 'r' && it->first == thread_id) return true;
+            // It's our turn
+        }
+    }
+    return false; // Not our turn
+}
+
+// Function to dequeue if it's indeed our turn
+bool rwlock_dequeue(std::list<std::pair<ThreadID, char>>& rwlock_queue,
+        ThreadID thread_id, char type) {
+    // Sanity check: Ensure it's our turn
+    if (!rwlock_is_turn(rwlock_queue, thread_id, type)) {
+        return false; // Not our turn, or pair does not exist
+    }
+
+    // It's confirmed our turn; now dequeue
+    if (type == 'w') {
+        // For writer at head
+        rwlock_queue.pop_front();
+    } else if (type == 'r') {
+        // For reader, remove the first occurrence at the head
+        for (auto it = rwlock_queue.begin(); it != rwlock_queue.end(); ++it) {
+            if (it->second == 'r' && it->first == thread_id) {
+                rwlock_queue.erase(it);
+                break; // Stop after removing the first matching reader
+            }
+        }
+    }
+
+    return true; // Dequeue succeeded
+}
+
 void
 SynchroTraceReplayer::processInsnMarker(ThreadContext& tcxt, CoreID coreId)
 {
     // a simple metadata marker; reschedule the next actual event
     // TODO(soonish) track stats
-    schedule(coreEvents[coreId], curTick());
-    tcxt.evStream.pop();
+    // reuse it as rwlock start and end indicator!!!
+    // todo do lock in each case
+    const StEvent& ev = tcxt.evStream.peek();
+    uint64_t rwlock_code = ev.insnMarker.insns;
+    uint64_t rwlock_indicator = rwlock_code % 100;
+    uint64_t rwlock_addr = rwlock_code / 100;
+
+    bool pop_event = true;
+    uint64_t recheck_cycles = 1;
+
+    // DPRINTFN("rwlock code[%d]\n", rwlock_code);
+
+    if (rwlock_code != 4096) {
+        if (rwlock_queues.find(rwlock_addr) == rwlock_queues.end())
+            rwlock_queues[rwlock_addr] =
+                    std::list<std::pair<ThreadID, char>>{};
+        auto &rwlock_queue = rwlock_queues[rwlock_addr];
+
+        if (rwlock_indicator == 00) {
+            // reader lock begin
+            DPRINTFN("Thread[%d] reader lock[%d] begin\n",
+                tcxt.threadId, rwlock_addr);
+            rwlock_queue.emplace_back(std::make_pair(tcxt.threadId, 'r'));
+        } else if (rwlock_indicator == 01) {
+            // writer lock begin
+            DPRINTFN("Thread[%d] writer lock[%d] begin\n",
+                tcxt.threadId, rwlock_addr);
+            rwlock_queue.emplace_back(std::make_pair(tcxt.threadId, 'w'));
+        } else if (rwlock_indicator == 02) {
+            // reader unlock begin
+            DPRINTFN("Thread[%d] reader unlock[%d] begin\n",
+                tcxt.threadId, rwlock_addr);
+            ;
+        } else if (rwlock_indicator == 03) {
+            // writer unlock begin
+            DPRINTFN("Thread[%d] writer unlock[%d] begin\n",
+                tcxt.threadId, rwlock_addr);
+            ;
+        } else if (rwlock_indicator == 10) {
+            // reader lock end
+            DPRINTFN("Thread[%d] reader lock[%d] end\n",
+                tcxt.threadId, rwlock_addr);
+            if (!rwlock_is_turn(rwlock_queue, tcxt.threadId, 'r')) {
+                recheck_cycles = 20;
+                pop_event = false;
+            }
+        } else if (rwlock_indicator == 11) {
+            // writer lock end
+            DPRINTFN("Thread[%d] writer lock[%d] end\n",
+                tcxt.threadId, rwlock_addr);
+            if (!rwlock_is_turn(rwlock_queue, tcxt.threadId, 'w')) {
+                recheck_cycles = 20;
+                pop_event = false;
+            }
+        } else if (rwlock_indicator == 12) {
+            // reader unlock end
+            DPRINTFN("Thread[%d] reader unlock[%d] end\n",
+                tcxt.threadId, rwlock_addr);
+            assert(rwlock_dequeue(rwlock_queue, tcxt.threadId, 'r'));
+            if (op_counts.find(tcxt.threadId) == op_counts.end())
+                op_counts[tcxt.threadId] = 0;
+            op_counts[tcxt.threadId] += 1;
+            if (op_counts[tcxt.threadId] >= warmup_ops)
+                prof_start_ticks[tcxt.threadId] = curTick();
+        } else if (rwlock_indicator == 13) {
+            // writer unlock end
+            DPRINTFN("Thread[%d] writer unlock[%d] end\n",
+                tcxt.threadId, rwlock_addr);
+            assert(rwlock_dequeue(rwlock_queue, tcxt.threadId, 'w'));
+            if (op_counts.find(tcxt.threadId) == op_counts.end())
+                op_counts[tcxt.threadId] = 0;
+            op_counts[tcxt.threadId] += 1;
+            if (op_counts[tcxt.threadId] >= warmup_ops)
+                prof_start_ticks[tcxt.threadId] = curTick();
+        }
+    }
+    schedule(coreEvents[coreId], curTick() +
+        clockPeriod() * Cycles(recheck_cycles));
+    if (pop_event)
+        tcxt.evStream.pop();
 }
 
 void
