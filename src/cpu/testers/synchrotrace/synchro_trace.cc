@@ -940,6 +940,18 @@ SynchroTraceReplayer::processInsnMarker(ThreadContext& tcxt, CoreID coreId)
             op_counts[tcxt.threadId] += 1;
             if (op_counts[tcxt.threadId] >= warmup_ops)
                 prof_start_ticks[tcxt.threadId] = curTick();
+        } else if (rwlock_indicator == 20) {
+            // gcp reader lock
+
+        } else if (rwlock_indicator == 21) {
+            // gcp writer lock
+
+        } else if (rwlock_indicator == 22) {
+            // gcp reader unlock
+
+        } else if (rwlock_indicator == 23) {
+            // gcp writer unlock
+
         }
     }
     schedule(coreEvents[coreId], curTick() +
