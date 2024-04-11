@@ -17,7 +17,7 @@ workloads = {
     # 'kc': ['run_workloadl.dat', 'run_workloadh.dat'],
 }
 # workloads = {
-#     'kvs' : ['run_workloada.dat', ],
+#     'kvs' : ['run_workloadc.dat', ],
 # }
 
 # workloads = {
@@ -29,20 +29,21 @@ num_threads_per_nodess = [8, ]
 
 # num_nodess = [16, ]
 num_nodess = [16, 8, 4, 2, 1]
-# num_nodess = [2, ]
+# num_nodess = [1, ]
 # num_nodess = [16, 8]
 
-lock_types = ['pthread_rwlock_prefer_w',
-              'percpu',
-              'cohort_rw_spin_mutex',
-              'mcs',
-            #   'pthread_mutex'
-              ]
+# lock_types = ['pthread_rwlock_prefer_w',
+#               'percpu',
+#               'cohort_rw_spin_mutex',
+#               'mcs',
+#             #   'pthread_mutex'
+#               ]
 # lock_types = ['pthread_mutex', ]
 # lock_types = ['pthread_rwlock_prefer_w', ]
 # lock_types = ['mcs', ]
 # lock_types = ['percpu', ]
 # lock_types = ['cohort_rw_spin_mutex', ]
+lock_types = ['gcp', ]
 
 if __name__ == "__main__":
     for app in workloads:
@@ -62,7 +63,7 @@ if __name__ == "__main__":
                         os.system('mkdir -p %s' % output_path)
 
                         cmd = 'build/ARM/gem5.opt --outdir=%s \
-                            --debug-flags=STIntervalPrint \
+                            --debug-flags=ProtocolTrace \
                                 configs/example/synchrotrace_ruby.py' \
                                     % output_path
 

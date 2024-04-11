@@ -174,7 +174,9 @@ Sequencer::insertRequest(PacketPtr pkt, RubyRequestType request_type)
 
     // Check if the line is blocked for a Locked_RMW
     if (m_controller->isBlocked(line_addr) &&
-        (request_type != RubyRequestType_Locked_RMW_Write)) {
+        (request_type != RubyRequestType_Locked_RMW_Write &&
+        request_type != RubyRequestType_FLUSH &&
+        request_type != RubyRequestType_Locked_RMW_Read)) {
         // Return that this request's cache line address aliases with
         // a prior request that locked the cache line. The request cannot
         // proceed until the cache line is unlocked by a Locked_RMW_Write
@@ -190,10 +192,11 @@ Sequencer::insertRequest(PacketPtr pkt, RubyRequestType request_type)
         (request_type == RubyRequestType_RMW_Read) ||
         (request_type == RubyRequestType_RMW_Write) ||
         (request_type == RubyRequestType_Load_Linked) ||
-        (request_type == RubyRequestType_Store_Conditional) ||
-        (request_type == RubyRequestType_Locked_RMW_Read) ||
-        (request_type == RubyRequestType_Locked_RMW_Write) ||
-        (request_type == RubyRequestType_FLUSH)) {
+        (request_type == RubyRequestType_Store_Conditional)
+        // || (request_type == RubyRequestType_Locked_RMW_Read)
+        || (request_type == RubyRequestType_Locked_RMW_Write)
+        || (request_type == RubyRequestType_FLUSH)
+        ) {
 
         // Check if there is any outstanding read request for the same
         // cache line.
@@ -426,7 +429,8 @@ Sequencer::readCallback(Addr address, DataBlock& data,
     markRemoved();
 
     assert((request->m_type == RubyRequestType_LD) ||
-           (request->m_type == RubyRequestType_IFETCH));
+           (request->m_type == RubyRequestType_IFETCH) ||
+           (request->m_type == RubyRequestType_Locked_RMW_Read));
 
     hitCallback(request, data, true, mach, externalHit,
                 initialRequestTime, forwardRequestTime, firstResponseTime);
@@ -561,21 +565,27 @@ Sequencer::makeRequest(PacketPtr pkt)
         // exclusive operations and should leverage any migratory sharing
         // optimization built into the protocol.
         //
+        // DPRINTFN("Packet addr[0x%lx] flags[0x%x]\n",
+        // pkt->getAddr(), pkt->getFlags());
         if (pkt->isWrite()) {
             DPRINTF(RubySequencer, "Issuing Locked RMW Write\n");
             primary_type = RubyRequestType_Locked_RMW_Write;
+            secondary_type = RubyRequestType_Locked_RMW_Write;
         } else {
             DPRINTF(RubySequencer, "Issuing Locked RMW Read\n");
             assert(pkt->isRead());
             primary_type = RubyRequestType_Locked_RMW_Read;
+            secondary_type = RubyRequestType_Locked_RMW_Read;
         }
-        secondary_type = RubyRequestType_ST;
+        // secondary_type = RubyRequestType_ST;
     } else {
         //
         // To support SwapReq, we need to check isWrite() first: a SwapReq
         // should always be treated like a write, but since a SwapReq implies
         // both isWrite() and isRead() are true, check isWrite() first here.
         //
+        // DPRINTFN("Packet addr[0x%lx] flags[0x%x]\n",
+        // pkt->getAddr(), pkt->getFlags());
         if (pkt->isWrite()) {
             //
             // Note: M5 packets do not differentiate ST from RMW_Write
@@ -600,6 +610,8 @@ Sequencer::makeRequest(PacketPtr pkt)
                 }
             }
         } else if (pkt->isFlush()) {
+            // DPRINTFN("Packet addr[0x%lx] flags[0x%x]\n",
+            // pkt->getAddr(), pkt->getFlags());
           primary_type = secondary_type = RubyRequestType_FLUSH;
         } else {
             panic("Unsupported ruby packet type\n");
@@ -607,8 +619,11 @@ Sequencer::makeRequest(PacketPtr pkt)
     }
 
     RequestStatus status = insertRequest(pkt, primary_type);
-    if (status != RequestStatus_Ready)
+    if (status != RequestStatus_Ready) {
+        // DPRINTFN("Packet addr[0x%lx] flags[0x%x] return stats[%d]\n",
+        // pkt->getAddr(), pkt->getFlags(), status);
         return status;
+    }
 
     issueRequest(pkt, secondary_type);
 

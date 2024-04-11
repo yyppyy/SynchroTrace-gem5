@@ -596,6 +596,9 @@ class SynchroTraceReplayer : public MemObject
     std::set<ThreadID> mem_pollings;
     uint64_t max_async_mem_instr = 4;
 
+    // *GCP
+    std::set<ThreadID> gcp_pollings;
+
   protected:
 
     /** Wakeup frequencies */

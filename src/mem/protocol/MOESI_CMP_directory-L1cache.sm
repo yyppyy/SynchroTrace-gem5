@@ -96,6 +96,10 @@ machine(MachineType:L1Cache, "L1 cache protocol")
     M_W_lk, AccessPermission:Read_Only, desc="Modified (dirty)";
     MM_lk, AccessPermission:Read_Write, desc="Modified (dirty and locally modified)";
     MM_W_lk, AccessPermission:Read_Write, desc="Modified (dirty and locally modified)";
+    IM_lk, AccessPermission:Busy, "IM", desc="Issued GetX";
+    IS_lk, AccessPermission:Busy, "IS", desc="Issued GetS";
+    SM_lk, AccessPermission:Read_Only, "SM", desc="Issued GetX, we still have an old copy of the line";
+    OM_lk, AccessPermission:Read_Only, "SM", desc="Issued GetX, received data";
   }
 
   // EVENTS
@@ -694,6 +698,12 @@ machine(MachineType:L1Cache, "L1 cache protocol")
     sequencer.readCallback(address, cache_entry.DataBlk, true);
   }
 
+  action(rl_store_hit, "\rl", desc="Notify sequencer that store completed.") {
+    assert(is_valid(cache_entry));
+    DPRINTF(RubySlicc, "%s\n", cache_entry.DataBlk);
+    sequencer.writeCallback(address, cache_entry.DataBlk);
+  }  
+
   action(hh_store_hit, "\h", desc="Notify sequencer that store completed.") {
     assert(is_valid(cache_entry));
     DPRINTF(RubySlicc, "%s\n", cache_entry.DataBlk);
@@ -975,26 +985,33 @@ machine(MachineType:L1Cache, "L1 cache protocol")
 
   // GCPed release
   transition(S_lk, Release, S) {
-    // do sth?;
+    rl_store_hit;
+    k_popMandatoryQueue;
   }
   transition(O_lk, Release, O) {
-    // do sth?;
+    rl_store_hit;
+    k_popMandatoryQueue;
   }
   transition(M_lk, Release, M) {
-    // do sth?;
+    rl_store_hit;
+    k_popMandatoryQueue;
   }
   transition(M_W_lk, Release, M_W) {
-    // do sth?;
+    rl_store_hit;
+    k_popMandatoryQueue;
   }
   transition(MM_lk, Release, MM) {
-    // do sth?;
+    rl_store_hit;
+    k_popMandatoryQueue;
   }
   transition(MM_W_lk, Release, MM_W) {
-    // do sth?;
+    rl_store_hit;
+    k_popMandatoryQueue;
   }
 
   // Transitions from Idle
-  transition(I, Load, IS) {
+  // GCPed
+  transition(I, Reg_Load, IS) {
     ii_allocateL1DCacheBlock;
     i_allocateTBE;
     a_issueGETS;
@@ -1002,7 +1019,17 @@ machine(MachineType:L1Cache, "L1 cache protocol")
     k_popMandatoryQueue;
   }
 
-  transition(I, Ifetch, IS) {
+  // GCPed
+  transition(I, Load, IS_lk) {
+    ii_allocateL1DCacheBlock;
+    i_allocateTBE;
+    a_issueGETS;
+    uu_profileDataMiss;
+    k_popMandatoryQueue;
+  }
+
+  // GCPed
+  transition(I, Reg_Ifetch, IS) {
     jj_allocateL1ICacheBlock;
     i_allocateTBE;
     a_issueGETS;
@@ -1010,7 +1037,26 @@ machine(MachineType:L1Cache, "L1 cache protocol")
     k_popMandatoryQueue;
   }
 
-  transition(I, Store, IM) {
+  // GCPed
+  transition(I, Ifetch, IS_lk) {
+    jj_allocateL1ICacheBlock;
+    i_allocateTBE;
+    a_issueGETS;
+    uu_profileInstMiss;
+    k_popMandatoryQueue;
+  }
+
+  // GCPed
+  transition(I, Reg_Store, IM) {
+    ii_allocateL1DCacheBlock;
+    i_allocateTBE;
+    b_issueGETX;
+    uu_profileDataMiss;
+    k_popMandatoryQueue;
+  }
+
+  // GCPed
+  transition(I, Store, IM_lk) {
     ii_allocateL1DCacheBlock;
     i_allocateTBE;
     b_issueGETX;
@@ -1027,21 +1073,22 @@ machine(MachineType:L1Cache, "L1 cache protocol")
     l_popForwardQueue;
   }
 
-  // GCPed never happen
-  // transition({S, SM, O, OM, MM, MM_W, M, M_W}, Load) {
-  //   h_load_hit;
-  //   uu_profileDataHit;
-  //   k_popMandatoryQueue;
-  // }
-
-  // transition({S, SM, O, OM, MM, MM_W, M, M_W}, Ifetch) {
-  //   h_ifetch_hit;
-  //   uu_profileInstHit;
-  //   k_popMandatoryQueue;
-  // }
-
   // GCPed hit
   transition({S, SM, O, OM, MM, MM_W, M, M_W}, Reg_Load) {
+    h_load_hit;
+    uu_profileDataHit;
+    k_popMandatoryQueue;
+  }
+
+  // GCPed hit
+  transition(S, Load, S_lk) {
+    h_load_hit;
+    uu_profileDataHit;
+    k_popMandatoryQueue;
+  }
+
+  // GCPed hit
+  transition(O, Load, O_lk) {
     h_load_hit;
     uu_profileDataHit;
     k_popMandatoryQueue;
@@ -1052,16 +1099,24 @@ machine(MachineType:L1Cache, "L1 cache protocol")
     h_ifetch_hit;
     uu_profileInstHit;
     k_popMandatoryQueue;
-  }  
+  }
 
   // Transitions from Shared
-  // GCPed never happen
-  // transition(S, Store, SM) {
-  //   i_allocateTBE;
-  //   b_issueGETX;
-  //   uu_profileDataMiss;
-  //   k_popMandatoryQueue;
-  // }
+  // GCPed
+  transition(S, Reg_Store, SM) {
+    i_allocateTBE;
+    b_issueGETX;
+    uu_profileDataMiss;
+    k_popMandatoryQueue;
+  }
+
+  // GCPed
+  transition(S, Store, SM_lk) {
+    i_allocateTBE;
+    b_issueGETX;
+    uu_profileDataMiss;
+    k_popMandatoryQueue;
+  }
 
   transition(S, L1_Replacement, SI) {
     i_allocateTBE;
@@ -1094,13 +1149,21 @@ machine(MachineType:L1Cache, "L1 cache protocol")
   }
 
   // Transitions from Owned
-  // GCPed never happen
-  // transition(O, Store, OM) {
-  //   i_allocateTBE;
-  //   b_issueGETX;
-  //   uu_profileDataMiss;
-  //   k_popMandatoryQueue;
-  // }
+  // GCPed
+  transition(O, Reg_Store, OM) {
+    i_allocateTBE;
+    b_issueGETX;
+    uu_profileDataMiss;
+    k_popMandatoryQueue;
+  }
+
+  // GCPed
+  transition(O, Store, OM_lk) {
+    i_allocateTBE;
+    b_issueGETX;
+    uu_profileDataMiss;
+    k_popMandatoryQueue;
+  }
 
   transition(O, L1_Replacement, OI) {
     i_allocateTBE;
@@ -1133,6 +1196,42 @@ machine(MachineType:L1Cache, "L1 cache protocol")
   }
 
   // Transitions from MM
+
+  // GCPed hit
+  transition({MM, MM_W}, Reg_Store) {
+    hh_store_hit;
+    uu_profileDataHit;
+    k_popMandatoryQueue;
+  }
+
+  // GCPed load hit exclusive
+  transition(MM, Load, MM_lk) {
+    h_load_hit;
+    uu_profileDataHit;
+    k_popMandatoryQueue;
+  }
+
+  // GCPed load hit exclusive
+  transition(MM_W, Load, MM_W_lk) {
+    h_load_hit;
+    uu_profileDataHit;
+    k_popMandatoryQueue;
+  }
+
+  // GCPed hit
+  transition(MM, Store, MM_lk) {
+    hh_store_hit;
+    uu_profileDataHit;
+    k_popMandatoryQueue;
+  }
+
+  // GCPed hit
+  transition(MM_W, Store, MM_W_lk) {
+    hh_store_hit;
+    uu_profileDataHit;
+    k_popMandatoryQueue;
+  }
+
   // GCPed hit
   transition({MM_lk, MM_W_lk}, Reg_Store) {
     hh_store_hit;
@@ -1166,8 +1265,51 @@ machine(MachineType:L1Cache, "L1 cache protocol")
   }
 
   // Transitions from M
+
+  // GCPed hit
+  transition(M, Reg_Store, MM) {
+    hh_store_hit;
+    uu_profileDataHit;
+    k_popMandatoryQueue;
+  }
+
+  // GCPed load hit exclusive
+  transition(M, Load, MM_lk) {
+    h_load_hit;
+    uu_profileDataHit;
+    k_popMandatoryQueue;
+  }
+
+  // GCPed hit
+  transition(M, Store, MM_lk) {
+    hh_store_hit;
+    uu_profileDataHit;
+    k_popMandatoryQueue;
+  }
+
   // GCPed hit
   transition(M_lk, Reg_Store, MM_lk) {
+    hh_store_hit;
+    uu_profileDataHit;
+    k_popMandatoryQueue;
+  }
+
+  // GCPed hit
+  transition(M_W, Reg_Store, MM_W) {
+    hh_store_hit;
+    uu_profileDataHit;
+    k_popMandatoryQueue;
+  }
+
+  // GCPed load hit exclusive
+  transition(M_W, Load, MM_W_lk) {
+    h_load_hit;
+    uu_profileDataHit;
+    k_popMandatoryQueue;
+  }
+
+  // GCPed hit
+  transition(M_W, Store, MM_W_lk) {
     hh_store_hit;
     uu_profileDataHit;
     k_popMandatoryQueue;
@@ -1212,13 +1354,34 @@ machine(MachineType:L1Cache, "L1 cache protocol")
     l_popForwardQueue;
   }
 
+  // GCPed
+  transition(IM_lk, Inv) {
+    f_sendAck;
+    l_popForwardQueue;
+  }
+
   transition(IM, Ack) {
     m_decrementNumberOfMessages;
     o_checkForCompletion;
     n_popResponseQueue;
   }
 
+  // GCPed
+  transition(IM_lk, Ack) {
+    m_decrementNumberOfMessages;
+    o_checkForCompletion;
+    n_popResponseQueue;
+  }
+
   transition(IM, {Exclusive_Data, Data}, OM) {
+    u_writeDataToCache;
+    m_decrementNumberOfMessages;
+    o_checkForCompletion;
+    n_popResponseQueue;
+  }
+
+  // GCPed
+  transition(IM_lk, {Exclusive_Data, Data}, OM_lk) {
     u_writeDataToCache;
     m_decrementNumberOfMessages;
     o_checkForCompletion;
@@ -1232,7 +1395,21 @@ machine(MachineType:L1Cache, "L1 cache protocol")
     l_popForwardQueue;
   }
 
+  // GCPed
+  transition(SM_lk, Inv, IM_lk) {
+    f_sendAck;
+    forward_eviction_to_cpu;
+    l_popForwardQueue;
+  }
+
   transition(SM, Ack) {
+    m_decrementNumberOfMessages;
+    o_checkForCompletion;
+    n_popResponseQueue;
+  }
+
+  // GCPed
+  transition(SM_lk, Ack) {
     m_decrementNumberOfMessages;
     o_checkForCompletion;
     n_popResponseQueue;
@@ -1245,7 +1422,21 @@ machine(MachineType:L1Cache, "L1 cache protocol")
     n_popResponseQueue;
   }
 
+  // GCPed
+  transition(SM_lk, {Data, Exclusive_Data}, OM_lk) {
+    // v_writeDataToCacheVerify;
+    m_decrementNumberOfMessages;
+    o_checkForCompletion;
+    n_popResponseQueue;
+  }
+
   transition(SM, Fwd_GETS) {
+    e_sendData;
+    l_popForwardQueue;
+  }
+  
+  // GCPed
+  transition(SM_lk, Fwd_GETS) {
     e_sendData;
     l_popForwardQueue;
   }
@@ -1263,6 +1454,13 @@ machine(MachineType:L1Cache, "L1 cache protocol")
     l_popForwardQueue;
   }
 
+  // GCPed
+  transition(OM_lk, Own_GETX) {
+    mm_decrementNumberOfMessages;
+    o_checkForCompletion;
+    l_popForwardQueue;
+  }
+
 
   // transition(OM, Fwd_GETX, OMF) {
   transition(OM, Fwd_GETX, IM) {
@@ -1270,7 +1468,19 @@ machine(MachineType:L1Cache, "L1 cache protocol")
     l_popForwardQueue;
   }
 
+  // GCPed
+  transition(OM_lk, Fwd_GETX, IM_lk) {
+    ee_sendDataExclusive;
+    l_popForwardQueue;
+  }
+
   transition(OM, Fwd_GETS) {
+    e_sendData;
+    l_popForwardQueue;
+  }
+
+  // GCPed
+  transition(OM_lk, Fwd_GETS) {
     e_sendData;
     l_popForwardQueue;
   }
@@ -1289,7 +1499,22 @@ machine(MachineType:L1Cache, "L1 cache protocol")
   }
 
   // GCPed
-  transition(OM, All_acks, MM_W_lk) {
+  transition(OM_lk, Ack) {
+    m_decrementNumberOfMessages;
+    o_checkForCompletion;
+    n_popResponseQueue;
+  }
+
+  transition(OM, All_acks, MM_W) {
+    xx_store_hit;
+    gg_sendUnblockExclusive;
+    s_deallocateTBE;
+    o_scheduleUseTimeout;
+    j_popTriggerQueue;
+  }
+
+  // GCPed
+  transition(OM_lk, All_acks, MM_W_lk) {
     xx_store_hit;
     gg_sendUnblockExclusive;
     s_deallocateTBE;
@@ -1314,7 +1539,12 @@ machine(MachineType:L1Cache, "L1 cache protocol")
   }
 
   // GCPed
-  transition(IS, Data, S_lk) {
+  transition(IS_lk, Inv) {
+    f_sendAck;
+    l_popForwardQueue;
+  }
+
+  transition(IS, Data, S) {
     u_writeDataToCache;
     m_decrementNumberOfMessages;
     hx_load_hit;
@@ -1324,7 +1554,27 @@ machine(MachineType:L1Cache, "L1 cache protocol")
   }
 
   // GCPed
-  transition(IS, Exclusive_Data, M_W_lk) {
+  transition(IS_lk, Data, S_lk) {
+    u_writeDataToCache;
+    m_decrementNumberOfMessages;
+    hx_load_hit;
+    g_sendUnblock;
+    s_deallocateTBE;
+    n_popResponseQueue;
+  }
+
+  transition(IS, Exclusive_Data, M_W) {
+    u_writeDataToCache;
+    m_decrementNumberOfMessages;
+    hx_load_hit;
+    gg_sendUnblockExclusive;
+    o_scheduleUseTimeout;
+    s_deallocateTBE;
+    n_popResponseQueue;
+  }
+
+  // GCPed
+  transition(IS_lk, Exclusive_Data, M_W_lk) {
     u_writeDataToCache;
     m_decrementNumberOfMessages;
     hx_load_hit;

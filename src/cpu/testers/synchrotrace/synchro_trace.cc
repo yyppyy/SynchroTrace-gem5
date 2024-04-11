@@ -942,25 +942,61 @@ SynchroTraceReplayer::processInsnMarker(ThreadContext& tcxt, CoreID coreId)
                 prof_start_ticks[tcxt.threadId] = curTick();
         } else if (rwlock_indicator == 20) {
             // gcp reader lock
-            if (msgReqSendGCP(coreId,
-                rwlock_addr,
-                8,
-                ReqType::REQ_READ)) {
-                ;
-            } else {
+            if (gcp_pollings.find(tcxt.threadId) == gcp_pollings.end()) {
+                if (msgReqSendGCP(coreId,
+                    rwlock_addr,
+                    8,
+                    ReqType::REQ_READ)) {
+                    DPRINTFN("Thread[%d] GCP rlock[0x%lx] begin\n",
+                        tcxt.threadId, rwlock_addr);
+                    gcp_pollings.insert(tcxt.threadId);
+                    pending_mem_instrs[tcxt.threadId] += 1;
+                } else {
+                    DPRINTFN("Thread[%d] GCP rlock[0x%lx] fail\n",
+                        tcxt.threadId, rwlock_addr);
+                }
                 recheck_cycles = 20;
                 pop_event = false;
+            } else {
+                if (pending_mem_instrs[tcxt.threadId] > 0) {
+                    DPRINTFN("Thread[%d] GCP rlock[0x%lx] wait\n",
+                        tcxt.threadId, rwlock_addr);
+                    recheck_cycles = 20;
+                    pop_event = false;
+                } else {
+                    DPRINTFN("Thread[%d] GCP rlock[0x%lx] end\n",
+                        tcxt.threadId, rwlock_addr);
+                    gcp_pollings.erase(tcxt.threadId);
+                }
             }
         } else if (rwlock_indicator == 21) {
             // gcp writer lock
-            if (msgReqSendGCP(coreId,
-                rwlock_addr,
-                8,
-                ReqType::REQ_WRITE)) {
-                ;
-            } else {
+            if (gcp_pollings.find(tcxt.threadId) == gcp_pollings.end()) {
+                if (msgReqSendGCP(coreId,
+                    rwlock_addr,
+                    8,
+                    ReqType::REQ_WRITE)) {
+                    DPRINTFN("Thread[%d] GCP wlock[0x%lx] begin\n",
+                        tcxt.threadId, rwlock_addr);
+                    gcp_pollings.insert(tcxt.threadId);
+                    pending_mem_instrs[tcxt.threadId] += 1;
+                } else {
+                    DPRINTFN("Thread[%d] GCP wlock[0x%lx] fail\n",
+                        tcxt.threadId, rwlock_addr);
+                }
                 recheck_cycles = 20;
                 pop_event = false;
+            } else {
+                if (pending_mem_instrs[tcxt.threadId] > 0) {
+                    DPRINTFN("Thread[%d] GCP wlock[0x%lx] wait\n",
+                        tcxt.threadId, rwlock_addr);
+                    recheck_cycles = 20;
+                    pop_event = false;
+                } else {
+                    DPRINTFN("Thread[%d] GCP wlock[0x%lx] end\n",
+                        tcxt.threadId, rwlock_addr);
+                    gcp_pollings.erase(tcxt.threadId);
+                }
             }
         } else if (rwlock_indicator == 22) {
             // gcp reader unlock
@@ -968,8 +1004,16 @@ SynchroTraceReplayer::processInsnMarker(ThreadContext& tcxt, CoreID coreId)
                 rwlock_addr,
                 8,
                 ReqType::REQ_RELEASE)) {
-                ;
+                DPRINTFN("Thread[%d] GCP runlock[0x%lx] end\n",
+                    tcxt.threadId, rwlock_addr);
+                if (op_counts.find(tcxt.threadId) == op_counts.end())
+                    op_counts[tcxt.threadId] = 0;
+                op_counts[tcxt.threadId] += 1;
+                if (op_counts[tcxt.threadId] >= warmup_ops)
+                    prof_start_ticks[tcxt.threadId] = curTick();
             } else {
+                DPRINTFN("Thread[%d] GCP runlock[0x%lx] fail\n",
+                    tcxt.threadId, rwlock_addr);
                 recheck_cycles = 20;
                 pop_event = false;
             }
@@ -979,8 +1023,16 @@ SynchroTraceReplayer::processInsnMarker(ThreadContext& tcxt, CoreID coreId)
                 rwlock_addr,
                 8,
                 ReqType::REQ_RELEASE)) {
-                ;
+                DPRINTFN("Thread[%d] GCP wunlock[0x%lx] end\n",
+                    tcxt.threadId, rwlock_addr);
+                if (op_counts.find(tcxt.threadId) == op_counts.end())
+                    op_counts[tcxt.threadId] = 0;
+                op_counts[tcxt.threadId] += 1;
+                if (op_counts[tcxt.threadId] >= warmup_ops)
+                    prof_start_ticks[tcxt.threadId] = curTick();
             } else {
+                DPRINTFN("Thread[%d] GCP wunlock[0x%lx] fail\n",
+                    tcxt.threadId, rwlock_addr);
                 recheck_cycles = 20;
                 pop_event = false;
             }
@@ -1120,10 +1172,10 @@ bool SynchroTraceReplayer::msgReqSendGCP(CoreID coreId,
     } else {
         // The packet may not have been issued because another component
         // along the way became overwhelmed and had to drop the packet.
-        warn("%d: Packet did not issue from CoreID: %d, ThreadID: %d",
-             curTick(),
-             coreId,
-             coreToThreadMap[coreId].front().get().threadId);
+        // warn("%d: GCP Packet did not issue from CoreID: %d, ThreadID: %d",
+            //  curTick(),
+            //  coreId,
+            //  coreToThreadMap[coreId].front().get().threadId);
 
         // If the packet did not issue, delete it and create a new one upon
         // reissue. Cannot reuse it because it's created with the current
@@ -1217,6 +1269,9 @@ SynchroTraceReplayer::msgRespRecv(CoreID coreId, PacketPtr pkt)
         // not in critical section
         // schedule wake up
         // schedule(coreEvents[coreId], curTick());
+
+    DPRINTFN("Thread[%d] recv memory resp\n",
+        coreToThreadMap[coreId].front().get().threadId);
     dec_pending_msg(coreId);
     // }
 
