@@ -195,8 +195,8 @@ class SynchroTraceReplayer : public MemObject
 
         virtual void recvReqRetry() override
         {
-            // panic("%s does not expect a retry\n", name());
-            m_tester.dec_pending_msg(id);
+            panic("%s does not expect a retry\n", name());
+            // m_tester.dec_pending_msg(id);
         }
     };
 
@@ -594,7 +594,7 @@ class SynchroTraceReplayer : public MemObject
     std::set<ThreadID> in_crtc_secs;
     std::map<ThreadID, uint64_t> pending_mem_instrs;
     std::set<ThreadID> mem_pollings;
-    uint64_t max_async_mem_instr = 4;
+    uint64_t max_async_mem_instr = 1;
 
     // *GCP
     std::set<ThreadID> gcp_pollings;

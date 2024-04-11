@@ -337,23 +337,25 @@ SynchroTraceReplayer::replayMemory(ThreadContext& tcxt, CoreID coreId)
                 curTick() + clockPeriod() * Cycles(20));
             // DPRINTFN("Thread[%d] retry at 1 pending_mem_instrs[%d]\n",
                 // tcxt.threadId, pending_mem_instrs[tcxt.threadId]);
+            // DPRINTFN("stuck here 1\n");
             return;
         } else if (msgReqSendRetSucc(coreId,
                 ev.memoryReq.addr,
                 ev.memoryReq.bytesRequested,
                 ev.memoryReq.type)) {
             pending_mem_instrs[tcxt.threadId] += 1;
+            // DPRINTFN("Thread[%d] pending_mem_instrs[%d]\n",
+                // tcxt.threadId, pending_mem_instrs[tcxt.threadId]);
         } else {
             // msg can not be send now, retry later
             schedule(coreEvents[coreId],
                 curTick() + clockPeriod() * Cycles(20));
             // DPRINTFN("Thread[%d] retry at 2 pending_mem_instrs[%d]\n",
                 // tcxt.threadId, pending_mem_instrs[tcxt.threadId]);
+            // DPRINTFN("stuck here 2\n");
             return;
         }
     }
-
-    // Do not reschedule wakeup; will wakeup again on the timing response.
 
     if (in_crtc_secs.find(tcxt.threadId) != in_crtc_secs.end()) {
         // in critical section, prefetch shared data
@@ -369,6 +371,7 @@ SynchroTraceReplayer::replayMemory(ThreadContext& tcxt, CoreID coreId)
                 curTick() + clockPeriod() * Cycles(20));
             // DPRINTFN("Thread[%d] retry at 3 pending_mem_instrs[%d]\n",
                 // tcxt.threadId, pending_mem_instrs[tcxt.threadId]);
+            // DPRINTFN("stuck here 3\n");
         } else {
             tcxt.evStream.pop();
             schedule(coreEvents[coreId],
@@ -940,7 +943,8 @@ SynchroTraceReplayer::processInsnMarker(ThreadContext& tcxt, CoreID coreId)
             op_counts[tcxt.threadId] += 1;
             if (op_counts[tcxt.threadId] >= warmup_ops)
                 prof_start_ticks[tcxt.threadId] = curTick();
-        } else if (rwlock_indicator == 20) {
+        }
+        else if (rwlock_indicator == 20) {
             // gcp reader lock
             if (gcp_pollings.find(tcxt.threadId) == gcp_pollings.end()) {
                 if (msgReqSendGCP(coreId,
@@ -951,6 +955,9 @@ SynchroTraceReplayer::processInsnMarker(ThreadContext& tcxt, CoreID coreId)
                         tcxt.threadId, rwlock_addr);
                     gcp_pollings.insert(tcxt.threadId);
                     pending_mem_instrs[tcxt.threadId] += 1;
+                    assert(in_crtc_secs.find(tcxt.threadId)
+                        == in_crtc_secs.end());
+                    in_crtc_secs.insert(tcxt.threadId);
                 } else {
                     DPRINTFN("Thread[%d] GCP rlock[0x%lx] fail\n",
                         tcxt.threadId, rwlock_addr);
@@ -980,6 +987,9 @@ SynchroTraceReplayer::processInsnMarker(ThreadContext& tcxt, CoreID coreId)
                         tcxt.threadId, rwlock_addr);
                     gcp_pollings.insert(tcxt.threadId);
                     pending_mem_instrs[tcxt.threadId] += 1;
+                    assert(in_crtc_secs.find(tcxt.threadId)
+                        == in_crtc_secs.end());
+                    in_crtc_secs.insert(tcxt.threadId);
                 } else {
                     DPRINTFN("Thread[%d] GCP wlock[0x%lx] fail\n",
                         tcxt.threadId, rwlock_addr);
@@ -1011,6 +1021,8 @@ SynchroTraceReplayer::processInsnMarker(ThreadContext& tcxt, CoreID coreId)
                 op_counts[tcxt.threadId] += 1;
                 if (op_counts[tcxt.threadId] >= warmup_ops)
                     prof_start_ticks[tcxt.threadId] = curTick();
+                assert(in_crtc_secs.find(tcxt.threadId) != in_crtc_secs.end());
+                in_crtc_secs.erase(tcxt.threadId);
             } else {
                 DPRINTFN("Thread[%d] GCP runlock[0x%lx] fail\n",
                     tcxt.threadId, rwlock_addr);
@@ -1030,6 +1042,8 @@ SynchroTraceReplayer::processInsnMarker(ThreadContext& tcxt, CoreID coreId)
                 op_counts[tcxt.threadId] += 1;
                 if (op_counts[tcxt.threadId] >= warmup_ops)
                     prof_start_ticks[tcxt.threadId] = curTick();
+                assert(in_crtc_secs.find(tcxt.threadId) != in_crtc_secs.end());
+                in_crtc_secs.erase(tcxt.threadId);
             } else {
                 DPRINTFN("Thread[%d] GCP wunlock[0x%lx] fail\n",
                     tcxt.threadId, rwlock_addr);
@@ -1270,8 +1284,9 @@ SynchroTraceReplayer::msgRespRecv(CoreID coreId, PacketPtr pkt)
         // schedule wake up
         // schedule(coreEvents[coreId], curTick());
 
-    DPRINTFN("Thread[%d] recv memory resp\n",
-        coreToThreadMap[coreId].front().get().threadId);
+    DPRINTFN("Thread[%d] recv memory resp, pending_mem_instr[%d]\n",
+        coreToThreadMap[coreId].front().get().threadId,
+        pending_mem_instrs[coreToThreadMap[coreId].front().get().threadId]);
     dec_pending_msg(coreId);
     // }
 

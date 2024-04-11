@@ -967,6 +967,10 @@ machine(MachineType:L1Cache, "L1 cache protocol")
     z_recycleRequestQueue;
   }
 
+  transition({OI, SI, MI, II}, {Store, Load}) {
+    zz_recycleMandatoryQueue;
+  }
+
   transition({IM, SM, OM, IS, OI, SI, MI, II}, {Reg_Store, L1_Replacement}) {
     zz_recycleMandatoryQueue;
   }

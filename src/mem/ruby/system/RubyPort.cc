@@ -253,6 +253,8 @@ RubyPort::MemSlavePort::recvTimingReq(PacketPtr pkt)
     // pio port.
     if (pkt->cmd != MemCmd::MemFenceReq) {
         if (!isPhysMemAddress(pkt->getAddr())) {
+            // DPRINTFN("addr[0x%lx] connected[%d]\n",
+            // pkt->getAddr(), ruby_port->memMasterPort.isConnected());
             assert(ruby_port->memMasterPort.isConnected());
             DPRINTF(RubyPort, "Request address %#x assumed to be a "
                     "pio address\n", pkt->getAddr());

@@ -62,8 +62,8 @@ if __name__ == "__main__":
 
                         os.system('mkdir -p %s' % output_path)
 
+                        # --debug-flags=ProtocolTrace \
                         cmd = 'build/ARM/gem5.opt --outdir=%s \
-                            --debug-flags=ProtocolTrace \
                                 configs/example/synchrotrace_ruby.py' \
                                     % output_path
 
@@ -102,6 +102,7 @@ if __name__ == "__main__":
                         option_list.append('--cxl-switch-latency=60')
                         option_list.append('--profile-dir=' \
                             + str(output_path))
+                        option_list.append('--mem-size=4194304kB')
                         # option_list.append('--garnet-network=flexible')
 
                         options = ' '.join(option_list)
