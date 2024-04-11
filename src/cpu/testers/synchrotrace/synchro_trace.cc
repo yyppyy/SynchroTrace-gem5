@@ -942,16 +942,48 @@ SynchroTraceReplayer::processInsnMarker(ThreadContext& tcxt, CoreID coreId)
                 prof_start_ticks[tcxt.threadId] = curTick();
         } else if (rwlock_indicator == 20) {
             // gcp reader lock
-
+            if (msgReqSendGCP(coreId,
+                rwlock_addr,
+                8,
+                ReqType::REQ_READ)) {
+                ;
+            } else {
+                recheck_cycles = 20;
+                pop_event = false;
+            }
         } else if (rwlock_indicator == 21) {
             // gcp writer lock
-
+            if (msgReqSendGCP(coreId,
+                rwlock_addr,
+                8,
+                ReqType::REQ_WRITE)) {
+                ;
+            } else {
+                recheck_cycles = 20;
+                pop_event = false;
+            }
         } else if (rwlock_indicator == 22) {
             // gcp reader unlock
-
+            if (msgReqSendGCP(coreId,
+                rwlock_addr,
+                8,
+                ReqType::REQ_RELEASE)) {
+                ;
+            } else {
+                recheck_cycles = 20;
+                pop_event = false;
+            }
         } else if (rwlock_indicator == 23) {
             // gcp writer unlock
-
+            if (msgReqSendGCP(coreId,
+                rwlock_addr,
+                8,
+                ReqType::REQ_RELEASE)) {
+                ;
+            } else {
+                recheck_cycles = 20;
+                pop_event = false;
+            }
         }
     }
     schedule(coreEvents[coreId], curTick() +
@@ -997,6 +1029,76 @@ bool SynchroTraceReplayer::msgReqSendRetSucc(CoreID coreId,
     // Create the request packet that will be sent through the memory system.
     PacketPtr pkt = new Packet(req, type == ReqType::REQ_READ ?
                                MemCmd::ReadReq : MemCmd::WriteReq);
+
+    // We don't care about the actual data since we're only interested in the
+    // timing.
+    pkt->allocate();
+
+    DPRINTF(STDebug, "Requesting access to Addr 0x%x\n", pkt->getAddr());
+
+    // Send memory request
+    if (ports[coreId].sendTimingReq(pkt)) {
+        DPRINTF(STDebug,
+                "Tick<%d>: Message Triggered:"
+                " Core<%d>:Thread<%d>:Event<%d>:Addr<0x%x>\n",
+                curTick(),
+                coreId,
+                coreToThreadMap[coreId].front().get().threadId,
+                coreToThreadMap[coreId].front().get().currEventId,
+                addr);
+        return true;
+    } else {
+        // The packet may not have been issued because another component
+        // along the way became overwhelmed and had to drop the packet.
+        warn("%d: Packet did not issue from CoreID: %d, ThreadID: %d",
+             curTick(),
+             coreId,
+             coreToThreadMap[coreId].front().get().threadId);
+
+        // If the packet did not issue, delete it and create a new one upon
+        // reissue. Cannot reuse it because it's created with the current
+        // system state.
+        // Note: No need to delete the data, the packet destructor
+        // will delete it
+        delete pkt;
+
+        // Because there will be no response packet to wakeup the core,
+        // reschedule the core to try again next cycle.
+        // schedule(coreEvents[coreId], curTick() + clockPeriod());
+        return false;
+    }
+}
+
+bool SynchroTraceReplayer::msgReqSendGCP(CoreID coreId,
+                                      Addr addr,
+                                      uint32_t bytes,
+                                      ReqType type)
+{
+    // Packetize a simple memory request.
+
+    // No special flags are required for the request because
+    // - we only care about the timing of the underlying Packet within the
+    //   memory system,
+    // - and because we only thinly model a simple 1-CPI CPU.
+    //
+    // N.B. the address is most likely a (modified-to-be-valid) virtual memory
+    // address. SynchroTrace doesn't model a TLB, for simulation speed-up, at
+    // the cost of some accuracy.
+    auto req_type = (type == ReqType::REQ_READ ?
+                MemCmd::ReadReq : MemCmd::WriteReq);
+    auto flag = (type == ReqType::REQ_RELEASE ?
+                Request::RELEASE :
+                Request::LOCKED_RMW);
+    if (type == ReqType::REQ_RELEASE)
+        req_type = MemCmd::FlushReq;
+
+    RequestPtr req = std::make_shared<Request>(
+        addr, bytes, Request::Flags{flag}, masterID);
+    req->setContext(coreId);
+
+    // Create the request packet that will be sent through the memory system.
+
+    PacketPtr pkt = new Packet(req, req_type);
 
     // We don't care about the actual data since we're only interested in the
     // timing.

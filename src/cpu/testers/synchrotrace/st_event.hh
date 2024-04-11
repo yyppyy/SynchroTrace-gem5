@@ -75,7 +75,8 @@ constexpr StEventID InvalidEventID = std::numeric_limits<StEventID>::max();
 /** Read/Write */
 enum class ReqType: uint8_t {
     REQ_READ,
-    REQ_WRITE
+    REQ_WRITE,
+    REQ_RELEASE,
 };
 
 /**

@@ -374,6 +374,10 @@ class SynchroTraceReplayer : public MemObject
     void msgReqSend(CoreID coreId, Addr addr, uint32_t bytes, ReqType type);
     bool msgReqSendRetSucc(CoreID coreId, Addr addr,
         uint32_t bytes, ReqType type);
+    bool msgReqSendGCP(CoreID coreId,
+                                      Addr addr,
+                                      uint32_t bytes,
+                                      ReqType type);
 
     /** Memory request returned. Schedule to wake up and process next event. */
     void msgRespRecv(PortID coreId, PacketPtr pkt);
