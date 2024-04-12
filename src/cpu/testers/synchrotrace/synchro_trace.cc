@@ -323,61 +323,121 @@ SynchroTraceReplayer::replayMemory(ThreadContext& tcxt, CoreID coreId)
     // Send the load/store
     const StEvent& ev = tcxt.evStream.peek();
 
-    if (mem_pollings.find(tcxt.threadId) == mem_pollings.end()) {
-        // send only when not polling
-        // if (coreId == 0)
-            // DPRINTFN("Thread[%d] replay memory at [%lu],
-            // addr[0x%lx] bytes[%lu]
-            // type[%d]\n",
-            // tcxt.threadId, curTick(), ev.memoryReq.addr,
-                //    ev.memoryReq.bytesRequested,
-                //    (int)ev.memoryReq.type);
-        if (pending_mem_instrs[tcxt.threadId] >= max_async_mem_instr) {
-            schedule(coreEvents[coreId],
-                curTick() + clockPeriod() * Cycles(20));
-            // DPRINTFN("Thread[%d] retry at 1 pending_mem_instrs[%d]\n",
-                // tcxt.threadId, pending_mem_instrs[tcxt.threadId]);
-            // DPRINTFN("stuck here 1\n");
-            return;
-        } else if (msgReqSendRetSucc(coreId,
-                ev.memoryReq.addr,
-                ev.memoryReq.bytesRequested,
-                ev.memoryReq.type)) {
-            pending_mem_instrs[tcxt.threadId] += 1;
-            // DPRINTFN("Thread[%d] pending_mem_instrs[%d]\n",
-                // tcxt.threadId, pending_mem_instrs[tcxt.threadId]);
-        } else {
-            // msg can not be send now, retry later
-            schedule(coreEvents[coreId],
-                curTick() + clockPeriod() * Cycles(20));
-            // DPRINTFN("Thread[%d] retry at 2 pending_mem_instrs[%d]\n",
-                // tcxt.threadId, pending_mem_instrs[tcxt.threadId]);
-            // DPRINTFN("stuck here 2\n");
-            return;
-        }
+    bool instr_sent = (mem_pollings.find(tcxt.threadId)
+        != mem_pollings.end());
+    bool in_crtc_sec = (in_crtc_secs.find(tcxt.threadId)
+        != in_crtc_secs.end());
+    bool in_memcpy;
+    if (prev_mem_acc_addrs.find(tcxt.threadId) == prev_mem_acc_addrs.end()) {
+        in_memcpy = false;
+    } else {
+        in_memcpy = ((ev.memoryReq.addr - prev_mem_acc_addrs[tcxt.threadId])
+            == 8);
     }
 
-    if (in_crtc_secs.find(tcxt.threadId) != in_crtc_secs.end()) {
-        // in critical section, prefetch shared data
-        // Schedule wakeup for async mem instr
+    bool should_retry = false;
+
+    if (in_memcpy) {
+        should_retry = false;
+    } else if (instr_sent) {
+        // instr sent, so waiting for some reason
+        if (in_crtc_sec) {
+            should_retry = (pending_mem_instrs[tcxt.threadId]
+                >= max_async_mem_instr);
+        } else {
+            should_retry = (pending_mem_instrs[tcxt.threadId] > 0);
+        }
+    } else {
+        bool port_busy = (port_busys.find(tcxt.threadId) != port_busys.end());
+        if (!port_busy) {
+            if (msgReqSendRetSucc(coreId,
+                    ev.memoryReq.addr,
+                    ev.memoryReq.bytesRequested,
+                    ev.memoryReq.type)) {
+                // DPRINTFN("Thread[%d] send req pending_mem_instrs[%d]\n",
+                    // tcxt.threadId, pending_mem_instrs[tcxt.threadId]);
+                pending_mem_instrs[tcxt.threadId] += 1;
+                mem_pollings.insert(tcxt.threadId);
+            } else {
+                port_busys.insert(tcxt.threadId);
+            }
+            should_retry = true;
+        }
+        should_retry = true;
+        // else if (in_crtc_sec) {
+        //     // if port is busy and we are in critical section
+        //     // likely we are doing large memcpy
+        //     // give up to simulate memcpy throughput
+        //     should_retry = false;
+        // }
+    }
+
+    if (should_retry) {
+        schedule(coreEvents[coreId],
+             curTick() + clockPeriod() * Cycles(20));
+    } else {
+        mem_pollings.erase(tcxt.threadId);
+        prev_mem_acc_addrs[tcxt.threadId] = ev.memoryReq.addr;
         tcxt.evStream.pop();
         schedule(coreEvents[coreId],
              curTick() + clockPeriod());
-    } else {
-        // wait until pending mem instr finishes
-        if (pending_mem_instrs[tcxt.threadId] > 0) {
-            mem_pollings.insert(tcxt.threadId);
-            schedule(coreEvents[coreId],
-                curTick() + clockPeriod() * Cycles(20));
-            // DPRINTFN("Thread[%d] retry at 3 pending_mem_instrs[%d]\n",
-                // tcxt.threadId, pending_mem_instrs[tcxt.threadId]);
-            // DPRINTFN("stuck here 3\n");
-        } else {
-            tcxt.evStream.pop();
-            schedule(coreEvents[coreId],
-                curTick() + clockPeriod());
-        }
     }
+
+    // if (mem_pollings.find(tcxt.threadId) == mem_pollings.end()) {
+    //     // send only when not polling
+    //     // if (coreId == 0)
+    //         // DPRINTFN("Thread[%d] replay memory at [%lu],
+    //         // addr[0x%lx] bytes[%lu]
+    //         // type[%d]\n",
+    //         // tcxt.threadId, curTick(), ev.memoryReq.addr,
+    //             //    ev.memoryReq.bytesRequested,
+    //             //    (int)ev.memoryReq.type);
+    //     if (pending_mem_instrs[tcxt.threadId] >= max_async_mem_instr) {
+    //         schedule(coreEvents[coreId],
+    //             curTick() + clockPeriod() * Cycles(20));
+    //         DPRINTFN("Thread[%d] retry at 1 pending_mem_instrs[%d]\n",
+    //             tcxt.threadId, pending_mem_instrs[tcxt.threadId]);
+    //         // DPRINTFN("stuck here 1\n");
+    //         return;
+    //     } else if (msgReqSendRetSucc(coreId,
+    //             ev.memoryReq.addr,
+    //             ev.memoryReq.bytesRequested,
+    //             ev.memoryReq.type)) {
+    //         pending_mem_instrs[tcxt.threadId] += 1;
+    //         DPRINTFN("Thread[%d] send req pending_mem_instrs[%d]\n",
+    //             tcxt.threadId, pending_mem_instrs[tcxt.threadId]);
+    //     } else {
+    //         // msg can not be send now, retry later
+    //         schedule(coreEvents[coreId],
+    //             curTick() + clockPeriod() * Cycles(20));
+    //         // DPRINTFN("Thread[%d] retry at 2 pending_mem_instrs[%d]\n",
+    //             // tcxt.threadId, pending_mem_instrs[tcxt.threadId]);
+    //         // DPRINTFN("stuck here 2\n");
+    //         return;
+    //     }
+    // }
+
+    // if (in_crtc_secs.find(tcxt.threadId) != in_crtc_secs.end()) {
+    //     // in critical section, prefetch shared data
+    //     // Schedule wakeup for async mem instr
+    //     tcxt.evStream.pop();
+    //     schedule(coreEvents[coreId],
+    //          curTick() + clockPeriod());
+    // } else {
+    //     // not in critical section, always wait for previous mem instr
+    //     if (pending_mem_instrs[tcxt.threadId] > 0) {
+    //         mem_pollings.insert(tcxt.threadId);
+    //         schedule(coreEvents[coreId],
+    //             curTick() + clockPeriod() * Cycles(20));
+    //         DPRINTFN("Thread[%d] retry at 3 pending_mem_instrs[%d]\n",
+    //             tcxt.threadId, pending_mem_instrs[tcxt.threadId]);
+    //         // DPRINTFN("stuck here 3\n");
+    //     } else {
+    //         tcxt.evStream.pop();
+    //         schedule(coreEvents[coreId],
+    //             curTick() + clockPeriod());
+    //     }
+    // }
 }
 
 void
@@ -931,7 +991,7 @@ SynchroTraceReplayer::processInsnMarker(ThreadContext& tcxt, CoreID coreId)
             if (op_counts.find(tcxt.threadId) == op_counts.end())
                 op_counts[tcxt.threadId] = 0;
             op_counts[tcxt.threadId] += 1;
-            if (op_counts[tcxt.threadId] >= warmup_ops)
+            if (op_counts[tcxt.threadId] == warmup_ops)
                 prof_start_ticks[tcxt.threadId] = curTick();
         } else if (rwlock_indicator == 13) {
             // writer unlock end
@@ -941,12 +1001,15 @@ SynchroTraceReplayer::processInsnMarker(ThreadContext& tcxt, CoreID coreId)
             if (op_counts.find(tcxt.threadId) == op_counts.end())
                 op_counts[tcxt.threadId] = 0;
             op_counts[tcxt.threadId] += 1;
-            if (op_counts[tcxt.threadId] >= warmup_ops)
+            if (op_counts[tcxt.threadId] == warmup_ops)
                 prof_start_ticks[tcxt.threadId] = curTick();
         }
         else if (rwlock_indicator == 20) {
             // gcp reader lock
-            if (gcp_pollings.find(tcxt.threadId) == gcp_pollings.end()) {
+            if (gcp_pollings.find(tcxt.threadId) == gcp_pollings.end() &&
+                port_busys.find(tcxt.threadId) == port_busys.end()) {
+                    // has not yet successfully send, or fail to send
+                    // or has been told to resend
                 if (msgReqSendGCP(coreId,
                     rwlock_addr,
                     8,
@@ -959,26 +1022,36 @@ SynchroTraceReplayer::processInsnMarker(ThreadContext& tcxt, CoreID coreId)
                         == in_crtc_secs.end());
                     in_crtc_secs.insert(tcxt.threadId);
                 } else {
-                    DPRINTFN("Thread[%d] GCP rlock[0x%lx] fail\n",
-                        tcxt.threadId, rwlock_addr);
+                    // DPRINTFN("Thread[%d] GCP rlock[0x%lx] fail\n",
+                        // tcxt.threadId, rwlock_addr);
+                    port_busys.insert(tcxt.threadId);
                 }
                 recheck_cycles = 20;
                 pop_event = false;
             } else {
-                if (pending_mem_instrs[tcxt.threadId] > 0) {
-                    DPRINTFN("Thread[%d] GCP rlock[0x%lx] wait\n",
-                        tcxt.threadId, rwlock_addr);
+                // has sent successfully, or fail to send before
+                // but not yet told to resend
+                if (gcp_pollings.find(tcxt.threadId) != gcp_pollings.end()) {
+                    // has sent successfully, polling
+                    if (pending_mem_instrs[tcxt.threadId] > 0) {
+                        // DPRINTFN("Thread[%d] GCP rlock[0x%lx] wait\n",
+                            // tcxt.threadId, rwlock_addr);
+                        recheck_cycles = 20;
+                        pop_event = false;
+                    } else {
+                        DPRINTFN("Thread[%d] GCP rlock[0x%lx] end\n",
+                            tcxt.threadId, rwlock_addr);
+                        gcp_pollings.erase(tcxt.threadId);
+                    }
+                } else {
                     recheck_cycles = 20;
                     pop_event = false;
-                } else {
-                    DPRINTFN("Thread[%d] GCP rlock[0x%lx] end\n",
-                        tcxt.threadId, rwlock_addr);
-                    gcp_pollings.erase(tcxt.threadId);
                 }
             }
         } else if (rwlock_indicator == 21) {
             // gcp writer lock
-            if (gcp_pollings.find(tcxt.threadId) == gcp_pollings.end()) {
+            if (gcp_pollings.find(tcxt.threadId) == gcp_pollings.end() &&
+                port_busys.find(tcxt.threadId) == port_busys.end()) {
                 if (msgReqSendGCP(coreId,
                     rwlock_addr,
                     8,
@@ -991,21 +1064,27 @@ SynchroTraceReplayer::processInsnMarker(ThreadContext& tcxt, CoreID coreId)
                         == in_crtc_secs.end());
                     in_crtc_secs.insert(tcxt.threadId);
                 } else {
-                    DPRINTFN("Thread[%d] GCP wlock[0x%lx] fail\n",
-                        tcxt.threadId, rwlock_addr);
+                    // DPRINTFN("Thread[%d] GCP wlock[0x%lx] fail\n",
+                        // tcxt.threadId, rwlock_addr);
+                    port_busys.insert(tcxt.threadId);
                 }
                 recheck_cycles = 20;
                 pop_event = false;
             } else {
-                if (pending_mem_instrs[tcxt.threadId] > 0) {
-                    DPRINTFN("Thread[%d] GCP wlock[0x%lx] wait\n",
-                        tcxt.threadId, rwlock_addr);
+                if (gcp_pollings.find(tcxt.threadId) != gcp_pollings.end()) {
+                    if (pending_mem_instrs[tcxt.threadId] > 0) {
+                        // DPRINTFN("Thread[%d] GCP wlock[0x%lx] wait\n",
+                            // tcxt.threadId, rwlock_addr);
+                        recheck_cycles = 20;
+                        pop_event = false;
+                    } else {
+                        DPRINTFN("Thread[%d] GCP wlock[0x%lx] end\n",
+                            tcxt.threadId, rwlock_addr);
+                        gcp_pollings.erase(tcxt.threadId);
+                    }
+                } else {
                     recheck_cycles = 20;
                     pop_event = false;
-                } else {
-                    DPRINTFN("Thread[%d] GCP wlock[0x%lx] end\n",
-                        tcxt.threadId, rwlock_addr);
-                    gcp_pollings.erase(tcxt.threadId);
                 }
             }
         } else if (rwlock_indicator == 22) {
@@ -1019,13 +1098,13 @@ SynchroTraceReplayer::processInsnMarker(ThreadContext& tcxt, CoreID coreId)
                 if (op_counts.find(tcxt.threadId) == op_counts.end())
                     op_counts[tcxt.threadId] = 0;
                 op_counts[tcxt.threadId] += 1;
-                if (op_counts[tcxt.threadId] >= warmup_ops)
+                if (op_counts[tcxt.threadId] == warmup_ops)
                     prof_start_ticks[tcxt.threadId] = curTick();
                 assert(in_crtc_secs.find(tcxt.threadId) != in_crtc_secs.end());
                 in_crtc_secs.erase(tcxt.threadId);
             } else {
-                DPRINTFN("Thread[%d] GCP runlock[0x%lx] fail\n",
-                    tcxt.threadId, rwlock_addr);
+                // DPRINTFN("Thread[%d] GCP runlock[0x%lx] fail\n",
+                    // tcxt.threadId, rwlock_addr);
                 recheck_cycles = 20;
                 pop_event = false;
             }
@@ -1040,13 +1119,13 @@ SynchroTraceReplayer::processInsnMarker(ThreadContext& tcxt, CoreID coreId)
                 if (op_counts.find(tcxt.threadId) == op_counts.end())
                     op_counts[tcxt.threadId] = 0;
                 op_counts[tcxt.threadId] += 1;
-                if (op_counts[tcxt.threadId] >= warmup_ops)
+                if (op_counts[tcxt.threadId] == warmup_ops)
                     prof_start_ticks[tcxt.threadId] = curTick();
                 assert(in_crtc_secs.find(tcxt.threadId) != in_crtc_secs.end());
                 in_crtc_secs.erase(tcxt.threadId);
             } else {
-                DPRINTFN("Thread[%d] GCP wunlock[0x%lx] fail\n",
-                    tcxt.threadId, rwlock_addr);
+                // DPRINTFN("Thread[%d] GCP wunlock[0x%lx] fail\n",
+                    // tcxt.threadId, rwlock_addr);
                 recheck_cycles = 20;
                 pop_event = false;
             }
@@ -1284,9 +1363,9 @@ SynchroTraceReplayer::msgRespRecv(CoreID coreId, PacketPtr pkt)
         // schedule wake up
         // schedule(coreEvents[coreId], curTick());
 
-    DPRINTFN("Thread[%d] recv memory resp, pending_mem_instr[%d]\n",
-        coreToThreadMap[coreId].front().get().threadId,
-        pending_mem_instrs[coreToThreadMap[coreId].front().get().threadId]);
+    // DPRINTFN("Thread[%d] recv memory resp, pending_mem_instr[%d]\n",
+        // coreToThreadMap[coreId].front().get().threadId,
+        // pending_mem_instrs[coreToThreadMap[coreId].front().get().threadId]);
     dec_pending_msg(coreId);
     // }
 
@@ -1296,6 +1375,13 @@ SynchroTraceReplayer::msgRespRecv(CoreID coreId, PacketPtr pkt)
 
     // Schedule core to handle next event, now
     // schedule(coreEvents[coreId], curTick());
+}
+
+void
+SynchroTraceReplayer::msgReqRetry(PortID coreId) {
+    // assert(port_busys.find(coreToThreadMap[coreId].
+    // front().get().threadId) != port_busys.end());
+    port_busys.erase(coreToThreadMap[coreId].front().get().threadId);
 }
 
 bool

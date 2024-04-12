@@ -195,8 +195,11 @@ class SynchroTraceReplayer : public MemObject
 
         virtual void recvReqRetry() override
         {
-            panic("%s does not expect a retry\n", name());
+            // panic("%s does not expect a retry\n", name());
             // m_tester.dec_pending_msg(id);
+            // todo, let threads retry only after seeing this,
+            // not blindly retry
+            m_tester.msgReqRetry(id);
         }
     };
 
@@ -381,6 +384,7 @@ class SynchroTraceReplayer : public MemObject
 
     /** Memory request returned. Schedule to wake up and process next event. */
     void msgRespRecv(PortID coreId, PacketPtr pkt);
+    void msgReqRetry(PortID coreId);
     void dec_pending_msg(PortID coreId) {
       ThreadContext& tcxt = coreToThreadMap[coreId].front();
       pending_mem_instrs[tcxt.threadId] -= 1;
@@ -590,11 +594,13 @@ class SynchroTraceReplayer : public MemObject
     std::map<ThreadID, uint64_t> op_counts;
     const uint64_t warmup_ops = 0;
 
-    // *async mem instr to model prefetching
+    // *async mem instr to model large memcpy
     std::set<ThreadID> in_crtc_secs;
     std::map<ThreadID, uint64_t> pending_mem_instrs;
     std::set<ThreadID> mem_pollings;
     uint64_t max_async_mem_instr = 1;
+    std::set<ThreadID> port_busys;
+    std::map<ThreadID, Addr> prev_mem_acc_addrs;
 
     // *GCP
     std::set<ThreadID> gcp_pollings;

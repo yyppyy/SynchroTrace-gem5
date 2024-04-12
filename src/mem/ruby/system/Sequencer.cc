@@ -61,7 +61,8 @@ Sequencer::Sequencer(const Params *p)
     m_instCache_ptr = p->icache;
     m_dataCache_ptr = p->dcache;
     m_max_outstanding_requests = p->max_outstanding_requests;
-    m_deadlock_threshold = p->deadlock_threshold;
+    // m_deadlock_threshold = p->deadlock_threshold;
+    m_deadlock_threshold = Cycles(10000000000); // 5ms
 
     m_coreId = p->coreid; // for tracking the two CorePair sequencers
     assert(m_max_outstanding_requests > 0);
