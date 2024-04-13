@@ -1129,6 +1129,9 @@ SynchroTraceReplayer::processInsnMarker(ThreadContext& tcxt, CoreID coreId)
                 recheck_cycles = 20;
                 pop_event = false;
             }
+        } else if (rwlock_code == 9999) {
+            recheck_cycles = 4;
+            // l1 hit latency
         }
     }
     schedule(coreEvents[coreId], curTick() +
