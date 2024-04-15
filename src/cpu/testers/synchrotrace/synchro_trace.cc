@@ -61,6 +61,8 @@
 #include "sim/sim_exit.hh"
 #include "synchro_trace.hh"
 
+// #define COHORT_LOCK
+
 SynchroTraceReplayer::SynchroTraceReplayer(const Params *p)
   : MemObject(p),
     // general configuration
@@ -337,9 +339,43 @@ SynchroTraceReplayer::replayMemory(ThreadContext& tcxt, CoreID coreId)
 
     bool should_retry = false;
 
-    if (in_memcpy) {
+    // if (in_crtc_sec) {
+    //     tcxt.evStream.pop();
+    //     schedule(coreEvents[coreId],
+    //          curTick());
+    //     return;
+    // } else
+
+    if (in_crtc_sec) {
+        if (mem_acc_counts.find(tcxt.threadId) == mem_acc_counts.end())
+            mem_acc_counts[tcxt.threadId] = 0;
+        mem_acc_counts[tcxt.threadId] += 1;
+        if (mem_acc_counts[tcxt.threadId] % 2 != 0) {
+            tcxt.evStream.pop();
+            schedule(coreEvents[coreId],
+                curTick() + clockPeriod());
+            return;
+        }
+    }
+
+    if (in_crtc_sec && in_memcpy) {
         should_retry = false;
-    } else if (instr_sent) {
+    }
+    // else if (in_crtc_sec) {
+    //     tcxt.evStream.pop();
+    //     // prev_mem_acc_addrs[tcxt.threadId] = ev.memoryReq.addr;
+    //     // if (in_memcpy) {
+    //         // schedule(coreEvents[coreId],
+    //             //  curTick());
+    //         // return;
+    //     // } else {
+    //         schedule(coreEvents[coreId],
+    //             curTick() + clockPeriod() * 4);
+    //             // l1 hit latency
+    //         return;
+    //     // }
+    // }
+    else if (instr_sent) {
         // instr sent, so waiting for some reason
         if (in_crtc_sec) {
             should_retry = (pending_mem_instrs[tcxt.threadId]
@@ -363,18 +399,17 @@ SynchroTraceReplayer::replayMemory(ThreadContext& tcxt, CoreID coreId)
             }
             should_retry = true;
         }
-        should_retry = true;
-        // else if (in_crtc_sec) {
-        //     // if port is busy and we are in critical section
-        //     // likely we are doing large memcpy
-        //     // give up to simulate memcpy throughput
-        //     should_retry = false;
-        // }
+        else if (in_crtc_sec) {
+            // if port is busy and we are in critical section
+            // likely we are doing large memcpy
+            // give up to simulate memcpy throughput
+            should_retry = false;
+        }
     }
 
     if (should_retry) {
         schedule(coreEvents[coreId],
-             curTick() + clockPeriod() * Cycles(20));
+            curTick() + clockPeriod() * Cycles(20));
     } else {
         mem_pollings.erase(tcxt.threadId);
         prev_mem_acc_addrs[tcxt.threadId] = ev.memoryReq.addr;
@@ -903,6 +938,9 @@ bool rwlock_dequeue(std::list<std::pair<ThreadID, char>>& rwlock_queue,
     if (type == 'w') {
         // For writer at head
         rwlock_queue.pop_front();
+        for (auto it = rwlock_queue.begin(); it != rwlock_queue.end(); it++) {
+            DPRINTFN("t[%d] p[%c]\n", it->first, it->second);
+        }
     } else if (type == 'r') {
         // For reader, remove the first occurrence at the head
         for (auto it = rwlock_queue.begin(); it != rwlock_queue.end(); ++it) {
@@ -914,6 +952,33 @@ bool rwlock_dequeue(std::list<std::pair<ThreadID, char>>& rwlock_queue,
     }
 
     return true; // Dequeue succeeded
+}
+
+// uint64_t get_first_data_acc_cycles(int num_sockets) {
+//     return (40 * 1 + 300 * (num_sockets - 1)) / num_sockets;
+// }
+
+bool SynchroTraceReplayer::cohort_reorder_queue(
+    std::list<std::pair<ThreadID, char>>& rwlock_queue,
+    ThreadID thread_id) {
+
+    auto num_cpus_per_socket = numCpus / num_sockets;
+    auto socket_id = threadIdToCoreId(thread_id) / num_cpus_per_socket;
+    auto it = std::find_if(rwlock_queue.begin(), rwlock_queue.end(),
+                [socket_id, num_cpus_per_socket, this]
+                (const std::pair<ThreadID, char>& element) {
+                return (threadIdToCoreId(element.first) / num_cpus_per_socket)
+                    == socket_id;
+            });
+    if (it != rwlock_queue.end() && it != rwlock_queue.begin()) {
+        DPRINTFN("Rotate T[%d] core[%d] perm[%c]\n",
+            it->first, threadIdToCoreId(it->first), it->second);
+        std::rotate(rwlock_queue.begin(), it, std::next(it));
+        return true;
+    } else {
+        return false;
+    }
+
 }
 
 void
@@ -962,26 +1027,28 @@ SynchroTraceReplayer::processInsnMarker(ThreadContext& tcxt, CoreID coreId)
             assert(in_crtc_secs.find(tcxt.threadId) != in_crtc_secs.end());
             in_crtc_secs.erase(tcxt.threadId);
         } else if (rwlock_indicator == 10) {
-            // reader lock end
-            DPRINTFN("Thread[%d] reader lock[%d] end\n",
-                tcxt.threadId, rwlock_addr);
             if (!rwlock_is_turn(rwlock_queue, tcxt.threadId, 'r')) {
                 recheck_cycles = 20;
                 pop_event = false;
             } else {
+                // reader lock end
+                DPRINTFN("Thread[%d] reader lock[%d] end\n",
+                    tcxt.threadId, rwlock_addr);
                 assert(in_crtc_secs.find(tcxt.threadId) == in_crtc_secs.end());
                 in_crtc_secs.insert(tcxt.threadId);
+                // recheck_cycles = get_first_data_acc_cycles(num_sockets);
             }
         } else if (rwlock_indicator == 11) {
-            // writer lock end
-            DPRINTFN("Thread[%d] writer lock[%d] end\n",
-                tcxt.threadId, rwlock_addr);
             if (!rwlock_is_turn(rwlock_queue, tcxt.threadId, 'w')) {
                 recheck_cycles = 20;
                 pop_event = false;
             } else {
+                // writer lock end
+                DPRINTFN("Thread[%d] writer lock[%d] end\n",
+                    tcxt.threadId, rwlock_addr);
                 assert(in_crtc_secs.find(tcxt.threadId) == in_crtc_secs.end());
                 in_crtc_secs.insert(tcxt.threadId);
+                // recheck_cycles = get_first_data_acc_cycles(num_sockets);
             }
         } else if (rwlock_indicator == 12) {
             // reader unlock end
@@ -1003,6 +1070,20 @@ SynchroTraceReplayer::processInsnMarker(ThreadContext& tcxt, CoreID coreId)
             op_counts[tcxt.threadId] += 1;
             if (op_counts[tcxt.threadId] == warmup_ops)
                 prof_start_ticks[tcxt.threadId] = curTick();
+#ifdef COHORT_LOCK
+            if (rwlock_acquire_counts.find(rwlock_addr) ==
+                    rwlock_acquire_counts.end())
+                rwlock_acquire_counts[rwlock_addr] = 0;
+            if (rwlock_acquire_counts[rwlock_addr] < cohort_max_acq) {
+                if (cohort_reorder_queue(rwlock_queue, tcxt.threadId)) {
+                    rwlock_acquire_counts[rwlock_addr] += 1;
+                } else {
+                    rwlock_acquire_counts[rwlock_addr] = 0;
+                }
+            } else {
+                rwlock_acquire_counts[rwlock_addr] = 0;
+            }
+#endif
         }
         else if (rwlock_indicator == 20) {
             // gcp reader lock

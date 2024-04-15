@@ -591,8 +591,13 @@ class SynchroTraceReplayer : public MemObject
 
     // *rwlock simualtion
     std::map<uint64_t, std::list<std::pair<ThreadID, char>>> rwlock_queues;
+    std::map<uint64_t, uint64_t> rwlock_acquire_counts;
     std::map<ThreadID, uint64_t> op_counts;
     const uint64_t warmup_ops = 0;
+    const uint64_t cohort_max_acq = 16;
+    bool cohort_reorder_queue(
+    std::list<std::pair<ThreadID, char>>& rwlock_queue,
+    ThreadID thread_id);
 
     // *async mem instr to model large memcpy
     std::set<ThreadID> in_crtc_secs;
@@ -601,6 +606,7 @@ class SynchroTraceReplayer : public MemObject
     uint64_t max_async_mem_instr = 1;
     std::set<ThreadID> port_busys;
     std::map<ThreadID, Addr> prev_mem_acc_addrs;
+    std::map<ThreadID, uint64_t> mem_acc_counts;
 
     // *GCP
     std::set<ThreadID> gcp_pollings;

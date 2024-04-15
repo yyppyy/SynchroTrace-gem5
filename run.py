@@ -13,11 +13,11 @@ total_procs = 0
 root_path = '/home/yanpeng/GCP_gem5/prism/GCP_scripts/result/'
 
 workloads = {
-    'kvs' : ['run_workloada.dat', 'run_workloadb.dat', 'run_workloadc.dat'],
-    # 'kc': ['run_workloadl.dat', 'run_workloadh.dat'],
+    # 'kvs' : ['run_workloada.dat', 'run_workloadb.dat', 'run_workloadc.dat'],
+    'kc': ['run_workloadl.dat', 'run_workloadh.dat'],
 }
 # workloads = {
-#     'kvs' : ['run_workloada.dat', ],
+#     'kc' : ['run_workloadh.dat', ],
 # }
 
 # workloads = {
@@ -27,24 +27,25 @@ workloads = {
 num_threads_per_nodess = [8, ]
 # num_threads_per_nodess = [8, ]
 
-# num_nodess = [8, ]
-num_nodess = [16, 8, 4, 2, 1]
 # num_nodess = [1, ]
-# num_nodess = [4, ]
+num_nodess = [16, 8, 4, 2, 1]
+# num_nodess = [16, ]
+# num_nodess = [1, 2, 4, 8]
 
-# lock_types = ['pthread_rwlock_prefer_w',
-#               'percpu',
-#               'cohort_rw_spin_mutex',
-#               'mcs',
-#               'gcp',
-#             #   'pthread_mutex'
-#               ]
+lock_types = [
+                'pthread_rwlock_prefer_w',
+              'percpu',
+              'cohort_rw_spin_mutex',
+              'mcs',
+              'gcp',
+            #   'pthread_mutex'
+              ]
 # lock_types = ['pthread_mutex', ]
 # lock_types = ['pthread_rwlock_prefer_w', ]
 # lock_types = ['mcs', ]
 # lock_types = ['percpu', ]
 # lock_types = ['cohort_rw_spin_mutex', ]
-lock_types = ['gcp', ]
+# lock_types = ['gcp', ]
 
 if __name__ == "__main__":
     for app in workloads:
@@ -87,7 +88,7 @@ if __name__ == "__main__":
                         option_list.append('--num-sockets=' \
                             + str(num_nodes))
                         option_list.append('--l1d_size=64kB')
-                        option_list.append('--l1d_assoc=2')
+                        option_list.append('--l1d_assoc=8')
                         option_list.append('--l1i_size=64kB')
                         option_list.append('--l1i_assoc=2')
                         option_list.append('--l2_size=4096kB')
