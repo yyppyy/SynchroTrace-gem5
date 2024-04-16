@@ -146,6 +146,11 @@ SynchroTraceReplayer::init()
     for (auto& tcxt : threadContexts) {
         coreToThreadMap.at(threadIdToCoreId(tcxt.threadId)).emplace_back(tcxt);
         pending_mem_instrs[tcxt.threadId] = 0;
+        inter_socket_cc_txns[tcxt.threadId] = 0;
+        last_mem_acc_ticks[tcxt.threadId] = 0;
+        lock_begin_ticks[tcxt.threadId] = 0;
+        num_remote_locks[tcxt.threadId] = 0;
+        remote_lock_ticks[tcxt.threadId] = 0;
     }
 
     // Initialize statistics
@@ -358,6 +363,7 @@ SynchroTraceReplayer::replayMemory(ThreadContext& tcxt, CoreID coreId)
                     // tcxt.threadId, pending_mem_instrs[tcxt.threadId]);
                 pending_mem_instrs[tcxt.threadId] += 1;
                 mem_pollings.insert(tcxt.threadId);
+                last_mem_acc_ticks[tcxt.threadId] = curTick();
             } else {
                 port_busys.insert(tcxt.threadId);
             }
@@ -378,6 +384,8 @@ SynchroTraceReplayer::replayMemory(ThreadContext& tcxt, CoreID coreId)
     } else {
         mem_pollings.erase(tcxt.threadId);
         prev_mem_acc_addrs[tcxt.threadId] = ev.memoryReq.addr;
+        if (curTick() - last_mem_acc_ticks[tcxt.threadId] > 14000)
+            inter_socket_cc_txns[tcxt.threadId] += 1;
         tcxt.evStream.pop();
         schedule(coreEvents[coreId],
              curTick() + clockPeriod());
@@ -944,11 +952,13 @@ SynchroTraceReplayer::processInsnMarker(ThreadContext& tcxt, CoreID coreId)
             DPRINTFN("Thread[%d] reader lock[%d] begin\n",
                 tcxt.threadId, rwlock_addr);
             rwlock_queue.emplace_back(std::make_pair(tcxt.threadId, 'r'));
+            lock_begin_ticks[tcxt.threadId] = curTick();
         } else if (rwlock_indicator == 01) {
             // writer lock begin
             DPRINTFN("Thread[%d] writer lock[%d] begin\n",
                 tcxt.threadId, rwlock_addr);
             rwlock_queue.emplace_back(std::make_pair(tcxt.threadId, 'w'));
+            lock_begin_ticks[tcxt.threadId] = curTick();
         } else if (rwlock_indicator == 02) {
             // reader unlock begin
             DPRINTFN("Thread[%d] reader unlock[%d] begin\n",
@@ -971,6 +981,11 @@ SynchroTraceReplayer::processInsnMarker(ThreadContext& tcxt, CoreID coreId)
             } else {
                 assert(in_crtc_secs.find(tcxt.threadId) == in_crtc_secs.end());
                 in_crtc_secs.insert(tcxt.threadId);
+                if (curTick() - lock_begin_ticks[tcxt.threadId] > 14000) {
+                    num_remote_locks[tcxt.threadId] += 1;
+                    remote_lock_ticks[tcxt.threadId] +=
+                        (curTick() - lock_begin_ticks[tcxt.threadId]);
+                }
             }
         } else if (rwlock_indicator == 11) {
             // writer lock end
@@ -982,6 +997,11 @@ SynchroTraceReplayer::processInsnMarker(ThreadContext& tcxt, CoreID coreId)
             } else {
                 assert(in_crtc_secs.find(tcxt.threadId) == in_crtc_secs.end());
                 in_crtc_secs.insert(tcxt.threadId);
+                if (curTick() - lock_begin_ticks[tcxt.threadId] > 14000) {
+                    num_remote_locks[tcxt.threadId] += 1;
+                    remote_lock_ticks[tcxt.threadId] +=
+                        (curTick() - lock_begin_ticks[tcxt.threadId]);
+                }
             }
         } else if (rwlock_indicator == 12) {
             // reader unlock end
