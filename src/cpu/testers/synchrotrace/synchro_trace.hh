@@ -577,9 +577,9 @@ class SynchroTraceReplayer : public MemObject
         std::string file_path = profile_dir + std::to_string(thread_id);
         std::ofstream file(file_path);
         if (file.is_open()) {
-          file << curTick() - prof_start_ticks[thread_id] << std::endl
-            << inter_socket_cc_txns[thread_id] << std::endl
-            << num_remote_locks[thread_id] << std::endl;
+          for (const auto& lat : lock_acq_lats[thread_id]) {
+            file << lat << std::endl;
+          }
           file.close();
         } else {
           std::cerr << "Unable to open file at " << file_path << std::endl;
@@ -608,6 +608,7 @@ class SynchroTraceReplayer : public MemObject
     std::map<ThreadID, uint64_t> lock_begin_ticks;
     std::map<ThreadID, uint64_t> num_remote_locks;
     std::map<ThreadID, uint64_t> remote_lock_ticks;
+    std::map<ThreadID, std::vector<uint64_t>> lock_acq_lats;
 
     // *GCP
     std::set<ThreadID> gcp_pollings;

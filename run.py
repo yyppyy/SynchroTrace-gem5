@@ -17,7 +17,7 @@ workloads = {
     # 'kc': ['run_workloadl.dat', 'run_workloadh.dat'],
 }
 # workloads = {
-#     'bench' : ['0.5', ],
+#     'bench' : ['0.0', ],
 # }
 
 # workloads = {
@@ -27,16 +27,16 @@ workloads = {
 num_threads_per_nodess = [1, ]
 # num_threads_per_nodess = [8, ]
 
-# num_nodess = [8, ]
-num_nodess = [16, 8, 4, 2]
+num_nodess = [16, ]
+# num_nodess = [16, 8, 4, 2]
 # num_nodess = [2, ]
 # num_nodess = [4, ]
 
 lock_types = [
-                'pthread_rwlock_prefer_w',
-              'percpu',
+                # 'pthread_rwlock_prefer_w',
+            #   'percpu',
             #   'cohort_rw_spin_mutex',
-              'mcs',
+            #   'mcs',
               'gcp',
             #   'pthread_mutex'
               ]
