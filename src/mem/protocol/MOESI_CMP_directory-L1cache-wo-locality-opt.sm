@@ -988,29 +988,59 @@ machine(MachineType:L1Cache, "L1 cache protocol")
   }
 
   // GCPed release
-  transition(S_lk, Release, S) {
+  transition(S_lk, Release, SI) {
     rl_store_hit;
     k_popMandatoryQueue;
+    
+    i_allocateTBE;
+    dd_issuePUTS;
+    forward_eviction_to_cpu;
+    kk_deallocateL1CacheBlock;
   }
-  transition(O_lk, Release, O) {
+  transition(O_lk, Release, OI) {
     rl_store_hit;
     k_popMandatoryQueue;
+
+    i_allocateTBE;
+    dd_issuePUTO;
+    forward_eviction_to_cpu;
+    kk_deallocateL1CacheBlock;
   }
-  transition(M_lk, Release, M) {
+  transition(M_lk, Release, MI) {
     rl_store_hit;
     k_popMandatoryQueue;
+
+    i_allocateTBE;
+    d_issuePUTX;
+    forward_eviction_to_cpu;
+    kk_deallocateL1CacheBlock;
   }
-  transition(M_W_lk, Release, M_W) {
+  transition(M_W_lk, Release, MI) {
     rl_store_hit;
     k_popMandatoryQueue;
+
+    i_allocateTBE;
+    d_issuePUTX;
+    forward_eviction_to_cpu;
+    kk_deallocateL1CacheBlock;
   }
-  transition(MM_lk, Release, MM) {
+  transition(MM_lk, Release, MI) {
     rl_store_hit;
     k_popMandatoryQueue;
+
+    i_allocateTBE;
+    d_issuePUTX;
+    forward_eviction_to_cpu;
+    kk_deallocateL1CacheBlock;
   }
-  transition(MM_W_lk, Release, MM_W) {
+  transition(MM_W_lk, Release, MI) {
     rl_store_hit;
     k_popMandatoryQueue;
+
+    i_allocateTBE;
+    d_issuePUTX;
+    forward_eviction_to_cpu;
+    kk_deallocateL1CacheBlock;
   }
 
   // Transitions from Idle
@@ -1513,7 +1543,7 @@ machine(MachineType:L1Cache, "L1 cache protocol")
     xx_store_hit;
     gg_sendUnblockExclusive;
     s_deallocateTBE;
-    o_scheduleUseTimeout;
+    // o_scheduleUseTimeout;
     j_popTriggerQueue;
   }
 
@@ -1522,7 +1552,7 @@ machine(MachineType:L1Cache, "L1 cache protocol")
     xx_store_hit;
     gg_sendUnblockExclusive;
     s_deallocateTBE;
-    o_scheduleUseTimeout;
+    // o_scheduleUseTimeout;
     j_popTriggerQueue;
   }
 
@@ -1572,7 +1602,7 @@ machine(MachineType:L1Cache, "L1 cache protocol")
     m_decrementNumberOfMessages;
     hx_load_hit;
     gg_sendUnblockExclusive;
-    o_scheduleUseTimeout;
+    // o_scheduleUseTimeout;
     s_deallocateTBE;
     n_popResponseQueue;
   }
@@ -1583,7 +1613,7 @@ machine(MachineType:L1Cache, "L1 cache protocol")
     m_decrementNumberOfMessages;
     hx_load_hit;
     gg_sendUnblockExclusive;
-    o_scheduleUseTimeout;
+    // o_scheduleUseTimeout;
     s_deallocateTBE;
     n_popResponseQueue;
   }

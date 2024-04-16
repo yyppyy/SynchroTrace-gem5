@@ -612,6 +612,9 @@ class SynchroTraceReplayer : public MemObject
 
     // *GCP
     std::set<ThreadID> gcp_pollings;
+    std::map<ThreadID, uint64_t> gcp_used_times;
+    const uint64_t gcp_max_used_r = 6;
+    const uint64_t gcp_max_used_w = 5;
 
   protected:
 
