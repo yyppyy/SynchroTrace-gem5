@@ -68,7 +68,7 @@ machine(MachineType:Directory, "Directory protocol")
     IS, AccessPermission:Busy, desc="Blocked, was in idle";
     SS, AccessPermission:Read_Only, desc="Blocked, was in shared";
     OO, AccessPermission:Busy, desc="Blocked, was in owned";
-    MS, AccessPermission:Busy, desc="Blocked, going to owner or maybe modified";
+    MO, AccessPermission:Busy, desc="Blocked, going to owner or maybe modified";
     MM, AccessPermission:Busy, desc="Blocked, going to modified";
 
     MI, AccessPermission:Busy, desc="Blocked on a writeback";
@@ -687,13 +687,7 @@ machine(MachineType:Directory, "Directory protocol")
     j_popIncomingUnblockQueue;
   }
 
-  // transition(M, GETS, MO) {
-  //   f_forwardRequest;
-  //   i_popIncomingRequestQueue;
-  // }
-
-  transition(M, GETS, MS) {
-    c_moveOwnerToSharer;
+  transition(M, GETS, MO) {
     f_forwardRequest;
     i_popIncomingRequestQueue;
   }
@@ -725,22 +719,17 @@ machine(MachineType:Directory, "Directory protocol")
   }
 
 
-  transition({MM, MS, MI, MIS, OS, OSS, XI_M, XI_U, OI_D, OD, MD}, {GETS, GETX, PUTO, PUTO_SHARERS, PUTX, DMA_READ, DMA_WRITE}) {
+  transition({MM, MO, MI, MIS, OS, OSS, XI_M, XI_U, OI_D, OD, MD}, {GETS, GETX, PUTO, PUTO_SHARERS, PUTX, DMA_READ, DMA_WRITE}) {
     zz_recycleRequest;
   }
 
-  transition({MM, MS}, Exclusive_Unblock, M) {
+  transition({MM, MO}, Exclusive_Unblock, M) {
     cc_clearSharers;
     e_ownerIsUnblocker;
     j_popIncomingUnblockQueue;
   }
 
-  // transition(MO, Unblock, O) {
-  //   m_addUnlockerToSharers;
-  //   j_popIncomingUnblockQueue;
-  // }
-
-  transition(MS, Unblock, S) {
+  transition(MO, Unblock, O) {
     m_addUnlockerToSharers;
     j_popIncomingUnblockQueue;
   }
@@ -842,12 +831,12 @@ machine(MachineType:Directory, "Directory protocol")
     j_popIncomingUnblockQueue;
   }
 
-  transition({I, S, O, M, IS, SS, OO, MS, MM, MI, MIS, OS, OSS}, Memory_Data) {
+  transition({I, S, O, M, IS, SS, OO, MO, MM, MI, MIS, OS, OSS}, Memory_Data) {
     d_sendDataMsg;
     q_popMemQueue;
   }
 
-  transition({I, S, O, M, IS, SS, OO, MS, MM, MI, MIS, OS, OSS, XI_U, XI_M}, Memory_Ack) {
+  transition({I, S, O, M, IS, SS, OO, MO, MM, MI, MIS, OS, OSS, XI_U, XI_M}, Memory_Ack) {
     //a_sendAck;
     q_popMemQueue;
   }

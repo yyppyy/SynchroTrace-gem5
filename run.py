@@ -37,6 +37,7 @@ num_nodess = [16, 8, 4, 2, 1]
 #               'cohort_rw_spin_mutex',
 #               'mcs',
 #               'gcp',
+#               'qosb',
 #             #   'pthread_mutex'
 #               ]
 # lock_types = ['pthread_mutex', ]
@@ -45,7 +46,7 @@ num_nodess = [16, 8, 4, 2, 1]
 # lock_types = ['percpu', ]
 # lock_types = ['cohort_rw_spin_mutex', ]
 # lock_types = ['gcp', ]
-lock_types = ['qosb', 'gcp']
+lock_types = ['qosb']
 
 if __name__ == "__main__":
     for app in workloads:
@@ -66,7 +67,7 @@ if __name__ == "__main__":
 
                         # --debug-flags=ProtocolTrace \
                         gem5_target = 'build/ARM/gem5.opt' \
-                            if lock_type == 'qosb' \
+                            if lock_type != 'qosb' \
                             else 'QOSB/build/ARM/gem5.opt'
 
                         cmd = '%s --outdir=%s \
