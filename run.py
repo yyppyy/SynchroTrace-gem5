@@ -27,7 +27,7 @@ workloads = {
 num_threads_per_nodess = [8, ]
 # num_threads_per_nodess = [8, ]
 
-# num_nodess = [8, ]
+# num_nodess = [16, ]
 num_nodess = [16, 8, 4, 2, 1]
 # num_nodess = [1, ]
 # num_nodess = [4, ]
@@ -44,7 +44,8 @@ num_nodess = [16, 8, 4, 2, 1]
 # lock_types = ['mcs', ]
 # lock_types = ['percpu', ]
 # lock_types = ['cohort_rw_spin_mutex', ]
-lock_types = ['gcp', ]
+# lock_types = ['gcp', ]
+lock_types = ['qosb', ]
 
 if __name__ == "__main__":
     for app in workloads:
