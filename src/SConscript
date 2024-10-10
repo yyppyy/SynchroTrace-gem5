@@ -1328,6 +1328,7 @@ if env['GCC']:
 
     ccflags['fast'] += env['LTO_CCFLAGS']
     ldflags['fast'] += env['LTO_LDFLAGS']
+    ccflags['opt'] += ['-w']
 elif env['CLANG']:
     ccflags['debug'] += ['-g', '-O0']
     # opt, fast, prof and perf all share the same cc flags

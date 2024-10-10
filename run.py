@@ -32,20 +32,21 @@ num_nodess = [16, 8, 4, 2, 1]
 # num_nodess = [16, ]
 # num_nodess = [1, 2, 4, 8]
 
-lock_types = [
-                'pthread_rwlock_prefer_w',
-              'percpu',
-              'cohort_rw_spin_mutex',
-              'mcs',
-              'gcp',
-            #   'pthread_mutex'
-              ]
+# lock_types = [
+#                 'pthread_rwlock_prefer_w',
+#               'percpu',
+#               'cohort_rw_spin_mutex',
+#               'mcs',
+#               'gcp',
+#             #   'pthread_mutex'
+#               ]
 # lock_types = ['pthread_mutex', ]
 # lock_types = ['pthread_rwlock_prefer_w', ]
 # lock_types = ['mcs', ]
 # lock_types = ['percpu', ]
 # lock_types = ['cohort_rw_spin_mutex', ]
 # lock_types = ['gcp', ]
+lock_types = ['qosb', ]
 
 if __name__ == "__main__":
     for app in workloads:
@@ -65,9 +66,14 @@ if __name__ == "__main__":
                         os.system('mkdir -p %s' % output_path)
 
                         # --debug-flags=ProtocolTrace \
-                        cmd = 'build/ARM/gem5.opt --outdir=%s \
+
+                        gem5_target = 'build/ARM/gem5.opt' \
+                            if lock_type != 'qosb' \
+                            else 'QOSB/build/ARM/gem5.opt'
+
+                        cmd = '%s --outdir=%s \
                                 configs/example/synchrotrace_ruby.py' \
-                                    % output_path
+                                    % (gem5_target, output_path)
 
                         option_list = []
                         option_list.append('--ruby')
