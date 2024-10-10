@@ -14,6 +14,7 @@ root_path = '/home/yanpeng/GCP_gem5/prism/GCP_scripts/result/'
 
 workloads = {
     'bench' : ['0.0', '0.5', '0.95', '0.99'],
+    # 'bench' : ['0.5', ],
     # 'kc': ['run_workloadl.dat', 'run_workloadh.dat'],
 }
 # workloads = {
@@ -33,19 +34,19 @@ num_nodess = [16, ]
 # num_nodess = [4, ]
 
 lock_types = [
-                # 'pthread_rwlock_prefer_w',
-            #   'percpu',
-            #   'cohort_rw_spin_mutex',
-            #   'mcs',
               'gcp',
-            #   'pthread_mutex'
+              'gcp_wo_combined_data_opt',
+              'gcp_wo_locality_opt',
+            #   'gcp_wo_o_opt',
               ]
 # lock_types = ['pthread_mutex', ]
 # lock_types = ['pthread_rwlock_prefer_w', ]
 # lock_types = ['mcs', ]
 # lock_types = ['percpu', ]
 # lock_types = ['cohort_rw_spin_mutex', ]
-# lock_types = ['gcp', ]
+# lock_types = ['gcp_wo_combined_data_opt', ]
+# lock_types = ['gcp_wo_locality_opt', ]
+# lock_types = ['gcp_wo_o_opt', ]
 
 if __name__ == "__main__":
     for app in workloads:
@@ -65,9 +66,21 @@ if __name__ == "__main__":
                         os.system('mkdir -p %s' % output_path)
 
                         # --debug-flags=ProtocolTrace \
-                        cmd = 'build/ARM/gem5.opt --outdir=%s \
+                        gem5_target = ''
+                        if lock_type == 'gcp':
+                            gem5_target = 'build/ARM/gem5.opt'
+                        elif lock_type == 'gcp_wo_combined_data_opt':
+                            gem5_target = \
+                                'WO_COMBINED_DATA_OPT/build/ARM/gem5.opt'
+                        elif lock_type == 'gcp_wo_locality_opt':
+                            gem5_target = 'WO_LOCALITY_OPT/build/ARM/gem5.opt'
+                        elif lock_type == 'gcp_wo_o_opt': # wo O state opt
+                            gem5_target = 'WO_LOCALITY_OPT/build/ARM/gem5.opt'
+                        else:
+                            assert(0)
+                        cmd = '%s --outdir=%s \
                                 configs/example/synchrotrace_ruby.py' \
-                                    % output_path
+                                    % (gem5_target , output_path)
 
                         option_list = []
                         option_list.append('--ruby')

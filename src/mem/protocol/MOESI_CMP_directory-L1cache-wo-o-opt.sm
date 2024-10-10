@@ -113,6 +113,7 @@ machine(MachineType:L1Cache, "L1 cache protocol")
     Own_GETX,      desc="We observe our own GetX forwarded back to us";
     Fwd_GETX,      desc="A GetX from another processor";
     Fwd_GETS,      desc="A GetS from another processor";
+    Fwd_GETS_WasLocked, desc="Used by QOSB to cancel the O state";
     Fwd_DMA,      desc="A GetS from another processor";
     Inv,           desc="Invalidations from the directory";
 
@@ -148,6 +149,7 @@ machine(MachineType:L1Cache, "L1 cache protocol")
     State CacheState,        desc="cache state";
     bool Dirty,              desc="Is the data dirty (different than memory)?";
     DataBlock DataBlk,       desc="data for the block";
+    bool WasLocked,          desc="line was locked, but then released and kept local";
   }
 
   // TBE fields
@@ -392,8 +394,14 @@ machine(MachineType:L1Cache, "L1 cache protocol")
                     getCacheEntry(in_msg.addr), TBEs[in_msg.addr]);
           }
         } else if (in_msg.Type == CoherenceRequestType:GETS) {
-          trigger(Event:Fwd_GETS, in_msg.addr,
-                  getCacheEntry(in_msg.addr), TBEs[in_msg.addr]);
+          Entry cache_entry := getCacheEntry(in_msg.addr);
+          if (is_valid(cache_entry) && (cache_entry.CacheState == State:M || cache_entry.CacheState == State:MI) && cache_entry.WasLocked) {
+            trigger(Event:Fwd_GETS_WasLocked, in_msg.addr,
+                    getCacheEntry(in_msg.addr), TBEs[in_msg.addr]);            
+          } else {
+            trigger(Event:Fwd_GETS, in_msg.addr,
+                    getCacheEntry(in_msg.addr), TBEs[in_msg.addr]);
+          }
         } else if (in_msg.Type == CoherenceRequestType:DMA_READ) {
           trigger(Event:Fwd_DMA, in_msg.addr,
                   getCacheEntry(in_msg.addr), TBEs[in_msg.addr]);
@@ -701,6 +709,7 @@ machine(MachineType:L1Cache, "L1 cache protocol")
   action(rl_store_hit, "\rl", desc="Notify sequencer that store completed.") {
     assert(is_valid(cache_entry));
     DPRINTF(RubySlicc, "%s\n", cache_entry.DataBlk);
+    cache_entry.WasLocked := true;
     sequencer.writeCallback(address, cache_entry.DataBlk);
   }  
 
@@ -988,59 +997,29 @@ machine(MachineType:L1Cache, "L1 cache protocol")
   }
 
   // GCPed release
-  transition(S_lk, Release, SI) {
+  transition(S_lk, Release, S) {
     rl_store_hit;
     k_popMandatoryQueue;
-    
-    i_allocateTBE;
-    dd_issuePUTS;
-    forward_eviction_to_cpu;
-    kk_deallocateL1CacheBlock;
   }
-  transition(O_lk, Release, OI) {
+  transition(O_lk, Release, O) {
     rl_store_hit;
     k_popMandatoryQueue;
-
-    i_allocateTBE;
-    dd_issuePUTO;
-    forward_eviction_to_cpu;
-    kk_deallocateL1CacheBlock;
   }
-  transition(M_lk, Release, MI) {
+  transition(M_lk, Release, M) {
     rl_store_hit;
     k_popMandatoryQueue;
-
-    i_allocateTBE;
-    d_issuePUTX;
-    forward_eviction_to_cpu;
-    kk_deallocateL1CacheBlock;
   }
-  transition(M_W_lk, Release, MI) {
+  transition(M_W_lk, Release, M_W) {
     rl_store_hit;
     k_popMandatoryQueue;
-
-    i_allocateTBE;
-    d_issuePUTX;
-    forward_eviction_to_cpu;
-    kk_deallocateL1CacheBlock;
   }
-  transition(MM_lk, Release, MI) {
+  transition(MM_lk, Release, MM) {
     rl_store_hit;
     k_popMandatoryQueue;
-
-    i_allocateTBE;
-    d_issuePUTX;
-    forward_eviction_to_cpu;
-    kk_deallocateL1CacheBlock;
   }
-  transition(MM_W_lk, Release, MI) {
+  transition(MM_W_lk, Release, MM_W) {
     rl_store_hit;
     k_popMandatoryQueue;
-
-    i_allocateTBE;
-    d_issuePUTX;
-    forward_eviction_to_cpu;
-    kk_deallocateL1CacheBlock;
   }
 
   // Transitions from Idle
@@ -1375,6 +1354,17 @@ machine(MachineType:L1Cache, "L1 cache protocol")
     l_popForwardQueue;
   }
 
+  // transition(M, Fwd_GETS, S) {
+  //   e_sendData;
+  //   l_popForwardQueue;
+  // }
+
+  transition(M, Fwd_GETS_WasLocked, I) {
+    ee_sendDataExclusive;
+    forward_eviction_to_cpu;
+    l_popForwardQueue;
+  }
+
   transition(M, Fwd_DMA) {
     e_sendData;
     ub_dmaUnblockL2Cache;
@@ -1543,7 +1533,7 @@ machine(MachineType:L1Cache, "L1 cache protocol")
     xx_store_hit;
     gg_sendUnblockExclusive;
     s_deallocateTBE;
-    // o_scheduleUseTimeout;
+    o_scheduleUseTimeout;
     j_popTriggerQueue;
   }
 
@@ -1552,7 +1542,7 @@ machine(MachineType:L1Cache, "L1 cache protocol")
     xx_store_hit;
     gg_sendUnblockExclusive;
     s_deallocateTBE;
-    // o_scheduleUseTimeout;
+    o_scheduleUseTimeout;
     j_popTriggerQueue;
   }
 
@@ -1602,7 +1592,7 @@ machine(MachineType:L1Cache, "L1 cache protocol")
     m_decrementNumberOfMessages;
     hx_load_hit;
     gg_sendUnblockExclusive;
-    // o_scheduleUseTimeout;
+    o_scheduleUseTimeout;
     s_deallocateTBE;
     n_popResponseQueue;
   }
@@ -1613,7 +1603,7 @@ machine(MachineType:L1Cache, "L1 cache protocol")
     m_decrementNumberOfMessages;
     hx_load_hit;
     gg_sendUnblockExclusive;
-    // o_scheduleUseTimeout;
+    o_scheduleUseTimeout;
     s_deallocateTBE;
     n_popResponseQueue;
   }
@@ -1631,6 +1621,16 @@ machine(MachineType:L1Cache, "L1 cache protocol")
 
   transition(MI, Fwd_GETS, OI) {
     q_sendDataFromTBEToCache;
+    l_popForwardQueue;
+  }
+
+  // transition(MI, Fwd_GETS, SI) {
+  //   q_sendDataFromTBEToCache;
+  //   l_popForwardQueue;
+  // }
+
+  transition(MI, Fwd_GETS_WasLocked, II) {
+    q_sendExclusiveDataFromTBEToCache;
     l_popForwardQueue;
   }
 

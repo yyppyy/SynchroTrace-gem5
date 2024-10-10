@@ -321,7 +321,7 @@ SynchroTraceReplayer::replayCompute(ThreadContext& tcxt, CoreID coreId)
     tcxt.evStream.pop();
 }
 
-#define OPT_COMBINED_DATA
+// #define OPT_COMBINED_DATA
 
 void
 SynchroTraceReplayer::replayMemory(ThreadContext& tcxt, CoreID coreId)
@@ -380,8 +380,8 @@ SynchroTraceReplayer::replayMemory(ThreadContext& tcxt, CoreID coreId)
                     ev.memoryReq.addr,
                     ev.memoryReq.bytesRequested,
                     ev.memoryReq.type)) {
-                // DPRINTFN("Thread[%d] send req pending_mem_instrs[%d]\n",
-                    // tcxt.threadId, pending_mem_instrs[tcxt.threadId]);
+                DPRINTFN("Thread[%d] send req pending_mem_instrs[%d]\n",
+                    tcxt.threadId, pending_mem_instrs[tcxt.threadId]);
                 pending_mem_instrs[tcxt.threadId] += 1;
                 mem_pollings.insert(tcxt.threadId);
                 last_mem_acc_ticks[tcxt.threadId] = curTick();
@@ -402,6 +402,8 @@ SynchroTraceReplayer::replayMemory(ThreadContext& tcxt, CoreID coreId)
     if (should_retry) {
         schedule(coreEvents[coreId],
              curTick() + clockPeriod() * Cycles(1));
+        // DPRINTFN("Thread[%d] wait pending_mem_instrs[%d]\n",
+                    // tcxt.threadId, pending_mem_instrs[tcxt.threadId]);
     } else {
         mem_pollings.erase(tcxt.threadId);
         prev_mem_acc_addrs[tcxt.threadId] = ev.memoryReq.addr;
@@ -409,7 +411,7 @@ SynchroTraceReplayer::replayMemory(ThreadContext& tcxt, CoreID coreId)
             inter_socket_cc_txns[tcxt.threadId] += 1;
         tcxt.evStream.pop();
         schedule(coreEvents[coreId],
-             curTick() + clockPeriod());
+             curTick() + clockPeriod() * Cycles(4));
     }
 
     // if (mem_pollings.find(tcxt.threadId) == mem_pollings.end()) {
@@ -1047,6 +1049,18 @@ SynchroTraceReplayer::processInsnMarker(ThreadContext& tcxt, CoreID coreId)
         }
         else if (rwlock_indicator == 20) {
             // gcp reader lock
+            if (gcp_used_times.find(tcxt.threadId) != gcp_used_times.end()) {
+                schedule(coreEvents[coreId], curTick() +
+                    clockPeriod() * Cycles(4));
+                tcxt.evStream.pop();
+                gcp_used_times[tcxt.threadId] += 1;
+                assert(in_crtc_secs.find(tcxt.threadId)
+                    == in_crtc_secs.end());
+                in_crtc_secs.insert(tcxt.threadId);
+                lock_begin_ticks[tcxt.threadId] = curTick();
+                return;
+            }
+
             if (gcp_pollings.find(tcxt.threadId) == gcp_pollings.end() &&
                 port_busys.find(tcxt.threadId) == port_busys.end()) {
                     // has not yet successfully send, or fail to send
@@ -1084,6 +1098,8 @@ SynchroTraceReplayer::processInsnMarker(ThreadContext& tcxt, CoreID coreId)
                         DPRINTFN("Thread[%d] GCP rlock[0x%lx] end\n",
                             tcxt.threadId, rwlock_addr);
                         gcp_pollings.erase(tcxt.threadId);
+                        if (gcp_max_used_r > 1)
+                            gcp_used_times[tcxt.threadId] = 1;
                     }
                 } else {
                     recheck_cycles = 1;
@@ -1092,6 +1108,19 @@ SynchroTraceReplayer::processInsnMarker(ThreadContext& tcxt, CoreID coreId)
             }
         } else if (rwlock_indicator == 21) {
             // gcp writer lock
+
+            if (gcp_used_times.find(tcxt.threadId) != gcp_used_times.end()) {
+                schedule(coreEvents[coreId], curTick() +
+                    clockPeriod() * Cycles(4));
+                tcxt.evStream.pop();
+                gcp_used_times[tcxt.threadId] += 1;
+                assert(in_crtc_secs.find(tcxt.threadId)
+                    == in_crtc_secs.end());
+                in_crtc_secs.insert(tcxt.threadId);
+                lock_begin_ticks[tcxt.threadId] = curTick();
+                return;
+            }
+
             if (gcp_pollings.find(tcxt.threadId) == gcp_pollings.end() &&
                 port_busys.find(tcxt.threadId) == port_busys.end()) {
                 if (msgReqSendGCP(coreId,
@@ -1124,6 +1153,8 @@ SynchroTraceReplayer::processInsnMarker(ThreadContext& tcxt, CoreID coreId)
                         DPRINTFN("Thread[%d] GCP wlock[0x%lx] end\n",
                             tcxt.threadId, rwlock_addr);
                         gcp_pollings.erase(tcxt.threadId);
+                        if (gcp_max_used_w > 1)
+                            gcp_used_times[tcxt.threadId] = 1;
                     }
                 } else {
                     recheck_cycles = 1;
@@ -1132,6 +1163,24 @@ SynchroTraceReplayer::processInsnMarker(ThreadContext& tcxt, CoreID coreId)
             }
         } else if (rwlock_indicator == 22) {
             // gcp reader unlock
+
+            if (gcp_used_times.find(tcxt.threadId) != gcp_used_times.end()) {
+                if (gcp_used_times[tcxt.threadId] < gcp_max_used_r &&
+                        lock_acq_lats[tcxt.threadId].size() < 299) {
+                    schedule(coreEvents[coreId], curTick() +
+                    clockPeriod());
+                    tcxt.evStream.pop();
+                    assert(in_crtc_secs.find(tcxt.threadId)
+                        != in_crtc_secs.end());
+                    in_crtc_secs.erase(tcxt.threadId);
+                    lock_acq_lats[tcxt.threadId].push_back(curTick() -
+                        lock_begin_ticks[tcxt.threadId]);
+                    return;
+                } else {
+                    gcp_used_times.erase(tcxt.threadId);
+                }
+            }
+
             if (msgReqSendGCP(coreId,
                 rwlock_addr,
                 8,
@@ -1155,6 +1204,24 @@ SynchroTraceReplayer::processInsnMarker(ThreadContext& tcxt, CoreID coreId)
             }
         } else if (rwlock_indicator == 23) {
             // gcp writer unlock
+
+            if (gcp_used_times.find(tcxt.threadId) != gcp_used_times.end()) {
+                if (gcp_used_times[tcxt.threadId] < gcp_max_used_w  &&
+                        lock_acq_lats[tcxt.threadId].size() < 299) {
+                    schedule(coreEvents[coreId], curTick() +
+                        clockPeriod());
+                    tcxt.evStream.pop();
+                    assert(in_crtc_secs.find(tcxt.threadId)
+                        != in_crtc_secs.end());
+                    in_crtc_secs.erase(tcxt.threadId);
+                    lock_acq_lats[tcxt.threadId].push_back(curTick() -
+                        lock_begin_ticks[tcxt.threadId]);
+                    return;
+                } else {
+                    gcp_used_times.erase(tcxt.threadId);
+                }
+            }
+
             if (msgReqSendGCP(coreId,
                 rwlock_addr,
                 8,
@@ -1413,9 +1480,9 @@ SynchroTraceReplayer::msgRespRecv(CoreID coreId, PacketPtr pkt)
         // schedule wake up
         // schedule(coreEvents[coreId], curTick());
 
-    // DPRINTFN("Thread[%d] recv memory resp, pending_mem_instr[%d]\n",
-        // coreToThreadMap[coreId].front().get().threadId,
-        // pending_mem_instrs[coreToThreadMap[coreId].front().get().threadId]);
+    DPRINTFN("Thread[%d] recv memory resp, pending_mem_instr[%d]\n",
+        coreToThreadMap[coreId].front().get().threadId,
+        pending_mem_instrs[coreToThreadMap[coreId].front().get().threadId]);
     dec_pending_msg(coreId);
     // }
 
