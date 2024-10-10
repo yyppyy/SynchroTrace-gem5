@@ -35,7 +35,7 @@
 #include <sys/mman.h>
 #include <sys/param.h>
 #include <sys/syscall.h>
-#include <sys/sysctl.h>
+// #include <sys/sysctl.h>
 #include <sys/types.h>
 #include <utime.h>
 
@@ -123,7 +123,8 @@ sysctlFunc(SyscallDesc *desc, int callnum, ThreadContext *tc)
     void *holdp = (void *)buf2.bufferPtr();
     size_t *holdlenp = (size_t *)buf3.bufferPtr();
 
-    ret = sysctl((int *)hnamep, namelen, holdp, holdlenp, hnewp, newlen);
+    // ret = sysctl((int *)hnamep, namelen, holdp, holdlenp, hnewp, newlen);
+    ret = 0;
 
     buf.copyOut(tc->getVirtProxy());
     buf2.copyOut(tc->getVirtProxy());
