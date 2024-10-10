@@ -34,10 +34,10 @@ num_nodess = [16, ]
 # num_nodess = [4, ]
 
 lock_types = [
-              'gcp',
-              'gcp_wo_combined_data_opt',
-              'gcp_wo_locality_opt',
-            #   'gcp_wo_o_opt',
+            #   'gcp',
+            #   'gcp_wo_combined_data_opt',
+            #   'gcp_wo_locality_opt',
+              'gcp_wo_o_opt',
               ]
 # lock_types = ['pthread_mutex', ]
 # lock_types = ['pthread_rwlock_prefer_w', ]
@@ -75,7 +75,7 @@ if __name__ == "__main__":
                         elif lock_type == 'gcp_wo_locality_opt':
                             gem5_target = 'WO_LOCALITY_OPT/build/ARM/gem5.opt'
                         elif lock_type == 'gcp_wo_o_opt': # wo O state opt
-                            gem5_target = 'WO_LOCALITY_OPT/build/ARM/gem5.opt'
+                            gem5_target = 'WO_O_OPT/build/ARM/gem5.opt'
                         else:
                             assert(0)
                         cmd = '%s --outdir=%s \
